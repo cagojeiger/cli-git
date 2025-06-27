@@ -150,7 +150,6 @@ cython_debug/
 
 # uv
 .uv/
-uv.lock
 
 # ruff
 .ruff_cache/
