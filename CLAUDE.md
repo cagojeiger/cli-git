@@ -2,6 +2,27 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Important Instructions
+
+1. **Planning Before Coding**: When the user requests a task, DO NOT immediately start writing code. First, create a detailed plan of how you will approach the work and ensure you deeply understand the user's intent. Immediate coding without planning often leads to misunderstanding the user's requirements. Think deeply about the task before implementation.
+2. **Documentation Language**: All user-facing documentation (README, docs) must be written in Korean
+3. **Code Quality**: Maintain >90% test coverage
+4. **Code Refactoring**: If any file exceeds 500 lines, plan and implement refactoring to split it into smaller, focused modules
+5. **Commit Messages**: Follow [Conventional Commits](https://www.conventionalcommits.org/) specification
+6. **Docstring Style**: Follow [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings) for all docstrings
+7. **Post-Code Completion**: After any code changes, always run these 3 commands in order:
+   ```bash
+   # 1. Update pre-commit hooks
+   uv run pre-commit autoupdate
+
+   # 2. Run all pre-commit hooks
+   uv run pre-commit run --all-files
+
+   # 3. Run tests
+   uv run pytest
+   ```
+
+
 ## Project Overview
 
 **cli-git** - A modern Python CLI tool for Git operations built with:
@@ -52,6 +73,15 @@ uv run pre-commit install
 # Run tests
 uv run pytest -c config/pytest.ini
 
+# Run a single test file
+uv run pytest tests/test_version.py -v
+
+# Run tests with coverage report
+uv run pytest --cov --cov-report=term-missing
+
+# Run tests for specific module with coverage
+uv run pytest tests/test_cli.py --cov=cli_git.cli --cov-report=term-missing
+
 # Run linters
 uv run ruff check --config config/ruff.toml src tests
 uv run black src tests
@@ -70,6 +100,13 @@ uv build
 
 # Run CLI locally
 uv run cli-git --version
+
+# Check for type errors (if mypy is added)
+# uv run mypy src
+
+# Generate coverage HTML report
+uv run pytest --cov --cov-report=html
+# Open htmlcov/index.html in browser
 ```
 
 ## Development Principles
@@ -107,10 +144,10 @@ display_version = partial(display_message, create_version_message)
 
 ### GitHub Actions Workflows
 1. **test.yml** - Runs on PR/push:
-   - Multi-OS testing (Ubuntu, Windows, macOS)
+   - Two separate jobs: pre-commit (Ubuntu only) and test (Ubuntu/macOS)
    - Python 3.11 and 3.12
-   - Linting and formatting checks
-   - Test coverage reporting
+   - Pre-commit hooks run first, then tests
+   - Test coverage reporting with Codecov
 
 2. **release.yml** - Runs on main branch:
    - Semantic versioning based on commits
@@ -155,7 +192,7 @@ Commit format determines version bumps:
 ## PyPI Publishing
 
 The project uses semantic-release for automated versioning and publishing:
-1. Commits to main trigger the release workflow
+1. **Manual trigger only** - release.yml requires manual workflow dispatch
 2. Version is automatically determined from commit messages
 3. Package is built and tested on TestPyPI first
 4. If successful, published to production PyPI
@@ -164,3 +201,10 @@ To set up PyPI publishing:
 1. Create PyPI account
 2. Add trusted publisher for GitHub Actions
 3. Configure environment protection rules
+
+## Code Quality Standards
+
+- **Test Coverage**: Minimum 90% required (configured in config/pytest.ini)
+- **Line Length**: 100 characters (black and isort configured)
+- **Python Versions**: Support 3.11 and 3.12
+- **Pre-commit**: Always run before committing (`uv run pre-commit run --all-files`)
