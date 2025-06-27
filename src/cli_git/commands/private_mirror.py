@@ -1,7 +1,7 @@
 """Create a private mirror of a public repository."""
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Annotated, Optional
@@ -116,7 +116,7 @@ def private_mirror_command(
 
     # Extract repository information
     try:
-        owner, repo_name = extract_repo_info(upstream)
+        _, repo_name = extract_repo_info(upstream)
     except ValueError as e:
         typer.echo(f"❌ {e}")
         raise typer.Exit(1)
@@ -152,7 +152,7 @@ def private_mirror_command(
         mirror_info = {
             "upstream": upstream,
             "mirror": mirror_url,
-            "created_at": datetime.utcnow().isoformat() + "Z",
+            "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         }
         config_manager.add_recent_mirror(mirror_info)
 
