@@ -54,15 +54,18 @@ jobs:
                   ]
                 },
                 {
-                  "type": "actions",
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Workflow URL:*\n<${{ github.event.workflow_run.html_url }}|View Failed Workflow>"
+                  }
+                },
+                {
+                  "type": "context",
                   "elements": [
                     {
-                      "type": "button",
-                      "text": {
-                        "type": "plain_text",
-                        "text": "View Workflow"
-                      },
-                      "url": "${{ github.event.workflow_run.html_url }}"
+                      "type": "mrkdwn",
+                      "text": "Click the link above to view the failed workflow details"
                     }
                   ]
                 }
