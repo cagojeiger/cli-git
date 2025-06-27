@@ -20,7 +20,6 @@ cli-git/
 │       ├── slack-notifications.yml    # Slack notifications for failures
 │       ├── test.yml           # CI testing pipeline
 │       └── release.yml        # Automated PyPI releases (manual trigger)
-├── .plan/                     # Development planning documents
 ├── config/                    # Configuration files
 │   ├── ruff.toml             # Ruff linter config
 │   ├── pytest.ini            # Pytest config
