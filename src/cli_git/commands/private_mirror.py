@@ -19,6 +19,14 @@ from cli_git.utils.gh import (
     get_current_username,
 )
 from cli_git.utils.git import extract_repo_info, run_git_command
+from cli_git.utils.validators import (
+    ValidationError,
+    validate_cron_schedule,
+    validate_github_url,
+    validate_organization,
+    validate_prefix,
+    validate_repository_name,
+)
 
 
 def disable_original_workflows(repo_path: Path) -> bool:
@@ -189,6 +197,26 @@ def private_mirror_command(
         typer.echo("   Run 'cli-git init' first")
         raise typer.Exit(1)
 
+    # Validate inputs
+    try:
+        # Validate upstream URL
+        validate_github_url(upstream)
+
+        # Validate organization if provided
+        if org:
+            validate_organization(org)
+
+        # Validate schedule
+        validate_cron_schedule(schedule)
+
+        # Validate prefix if provided
+        if prefix is not None:
+            validate_prefix(prefix)
+
+    except ValidationError as e:
+        typer.echo(str(e))
+        raise typer.Exit(1)
+
     # Extract repository information
     try:
         _, repo_name = extract_repo_info(upstream)
@@ -205,6 +233,13 @@ def private_mirror_command(
         target_name = repo  # Custom name overrides prefix
     else:
         target_name = f"{prefix}{repo_name}" if prefix else repo_name
+
+    # Validate the final repository name
+    try:
+        validate_repository_name(target_name)
+    except ValidationError as e:
+        typer.echo(str(e))
+        raise typer.Exit(1)
 
     # Use default org from config if not specified
     if not org and config["github"]["default_org"]:

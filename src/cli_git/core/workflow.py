@@ -98,11 +98,21 @@ jobs:
 
   notify-slack:
     needs: sync
-    if: needs.sync.outputs.has_conflicts == 'true' && secrets.SLACK_WEBHOOK_URL != ''
+    if: needs.sync.outputs.has_conflicts == 'true'
     runs-on: ubuntu-latest
 
     steps:
+      - name: Check for Slack webhook
+        id: check_webhook
+        run: |
+          if [[ -n "${{{{ secrets.SLACK_WEBHOOK_URL }}}}" ]]; then
+            echo "has_webhook=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_webhook=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Send Slack notification
+        if: steps.check_webhook.outputs.has_webhook == 'true'
         uses: slackapi/slack-github-action@v2.0.0
         with:
           webhook: ${{{{ secrets.SLACK_WEBHOOK_URL }}}}

@@ -11,6 +11,7 @@ from cli_git.utils.gh import (
     get_current_username,
     get_user_organizations,
 )
+from cli_git.utils.validators import ValidationError, validate_prefix, validate_slack_webhook_url
 
 
 def init_command(
@@ -77,10 +78,25 @@ def init_command(
     # Ask for Slack webhook URL
     typer.echo("\n🔔 Slack Integration (optional)")
     typer.echo("   Enter webhook URL to receive sync failure notifications")
-    slack_webhook_url = typer.prompt("Slack webhook URL (optional)", default="", hide_input=True)
+    while True:
+        slack_webhook_url = typer.prompt(
+            "Slack webhook URL (optional)", default="", hide_input=True
+        )
+        try:
+            validate_slack_webhook_url(slack_webhook_url)
+            break
+        except ValidationError as e:
+            typer.echo(str(e))
+            typer.echo("   Press Enter to skip or enter a valid URL")
 
     # Ask for default mirror prefix
-    default_prefix = typer.prompt("\nDefault mirror prefix", default="mirror-")
+    while True:
+        default_prefix = typer.prompt("\nDefault mirror prefix", default="mirror-")
+        try:
+            validate_prefix(default_prefix)
+            break
+        except ValidationError as e:
+            typer.echo(str(e))
 
     # Update configuration
     updates = {

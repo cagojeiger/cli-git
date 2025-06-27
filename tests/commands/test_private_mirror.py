@@ -91,10 +91,7 @@ class TestPrivateMirrorCommand:
 
     @patch("cli_git.commands.private_mirror.check_gh_auth")
     @patch("cli_git.commands.private_mirror.ConfigManager")
-    @patch("cli_git.commands.private_mirror.extract_repo_info")
-    def test_private_mirror_invalid_url(
-        self, mock_extract, mock_config_manager, mock_check_auth, runner
-    ):
+    def test_private_mirror_invalid_url(self, mock_config_manager, mock_check_auth, runner):
         """Test private mirror with invalid URL."""
         mock_check_auth.return_value = True
         mock_manager = MagicMock()
@@ -103,12 +100,11 @@ class TestPrivateMirrorCommand:
             "github": {"username": "testuser", "default_org": "", "slack_webhook_url": ""},
             "preferences": {"default_prefix": "mirror-"},
         }
-        mock_extract.side_effect = ValueError("Invalid repository URL")
 
         result = runner.invoke(app, ["private-mirror", "not-a-valid-url"])
 
         assert result.exit_code == 1
-        assert "❌ Invalid repository URL" in result.stdout
+        assert "❌ Invalid GitHub repository URL" in result.stdout
 
     @patch("cli_git.commands.private_mirror.check_gh_auth")
     @patch("cli_git.commands.private_mirror.get_current_username")
