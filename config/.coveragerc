@@ -2,7 +2,6 @@
 source = src/cli_git
 omit =
     */tests/*
-    */__main__.py
     */venv/*
     */.venv/*
 
