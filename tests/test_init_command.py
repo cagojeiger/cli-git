@@ -59,16 +59,24 @@ class TestInitCommand:
 
     @patch("cli_git.commands.init.check_gh_auth")
     @patch("cli_git.commands.init.get_current_username")
+    @patch("cli_git.commands.init.get_user_organizations")
     @patch("cli_git.commands.init.ConfigManager")
     @patch("cli_git.commands.init.typer.prompt")
     def test_init_with_default_org(
-        self, mock_prompt, mock_config_manager, mock_get_username, mock_check_auth, runner
+        self,
+        mock_prompt,
+        mock_config_manager,
+        mock_get_orgs,
+        mock_get_username,
+        mock_check_auth,
+        runner,
     ):
         """Test init with default organization."""
         # Setup mocks
         mock_check_auth.return_value = True
         mock_get_username.return_value = "testuser"
-        mock_prompt.return_value = "myorg"
+        mock_get_orgs.return_value = []  # No organizations
+        mock_prompt.side_effect = ["", "mirror-"]  # Slack URL, prefix
         mock_manager = MagicMock()
         mock_config_manager.return_value = mock_manager
         mock_manager.get_config.return_value = {
@@ -81,14 +89,11 @@ class TestInitCommand:
 
         # Verify
         assert result.exit_code == 0
-        assert "Default organization: myorg" in result.stdout
 
-        # Check prompt was called
-        mock_prompt.assert_called_once_with("Default organization (optional)", default="")
-
-        # Check config was updated with org
+        # Check config was updated
         config_updates = mock_manager.update_config.call_args[0][0]
-        assert config_updates["github"]["default_org"] == "myorg"
+        assert config_updates["github"]["username"] == "testuser"
+        assert config_updates["preferences"]["default_prefix"] == "mirror-"
 
     @patch("cli_git.commands.init.check_gh_auth")
     @patch("cli_git.commands.init.get_current_username")

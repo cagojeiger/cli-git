@@ -37,9 +37,13 @@ class TestWorkflow:
         assert checkout_step["uses"] == "actions/checkout@v4"
         assert checkout_step["with"]["fetch-depth"] == 0
 
+        # Check configure git step
+        configure_step = steps[1]
+        assert configure_step["name"] == "Configure git"
+
         # Check sync step
-        sync_step = steps[1]
-        assert sync_step["name"] == "Sync with upstream"
+        sync_step = steps[2]
+        assert sync_step["name"] == "Sync with rebase"
         assert "UPSTREAM_URL" in sync_step["env"]
         assert sync_step["env"]["UPSTREAM_URL"] == "${{ secrets.UPSTREAM_URL }}"
 
@@ -63,19 +67,18 @@ class TestWorkflow:
         assert "git config user.email" in workflow_yaml
         assert "git remote add upstream $UPSTREAM_URL" in workflow_yaml
         assert "git fetch upstream" in workflow_yaml
-        assert "git checkout main" in workflow_yaml
-        assert "git merge upstream/main --ff-only" in workflow_yaml
-        assert "git push origin main" in workflow_yaml
+        assert "git rebase upstream/main" in workflow_yaml
+        assert "git push origin main --force-with-lease" in workflow_yaml
         assert "git push origin --tags" in workflow_yaml
 
-    def test_branch_sync_logic(self):
-        """Test that branch synchronization logic is present."""
+    def test_conflict_handling(self):
+        """Test that conflict handling logic is present."""
         workflow_yaml = generate_sync_workflow(
             upstream_url="https://github.com/owner/repo", schedule="0 0 * * *"
         )
 
-        # Check for branch sync loop
-        assert "for branch in $(git branch -r | grep upstream | grep -v HEAD)" in workflow_yaml
-        assert "local_branch=${branch#upstream/}" in workflow_yaml
-        assert "git checkout -B $local_branch $branch" in workflow_yaml
-        assert "git push origin $local_branch" in workflow_yaml
+        # Check for conflict handling
+        assert "has_conflicts=true" in workflow_yaml
+        assert "has_conflicts=false" in workflow_yaml
+        assert "gh pr create" in workflow_yaml
+        assert "notify-slack" in workflow_yaml

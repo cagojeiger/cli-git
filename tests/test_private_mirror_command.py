@@ -38,8 +38,8 @@ class TestPrivateMirrorCommand:
         mock_manager = MagicMock()
         mock_config_manager.return_value = mock_manager
         mock_manager.get_config.return_value = {
-            "github": {"username": "testuser", "default_org": ""},
-            "preferences": {"default_schedule": "0 0 * * *"},
+            "github": {"username": "testuser", "default_org": "", "slack_webhook_url": ""},
+            "preferences": {"default_schedule": "0 0 * * *", "default_prefix": "mirror-"},
         }
 
         # Run command
@@ -53,11 +53,12 @@ class TestPrivateMirrorCommand:
         # Verify mirror operation was called correctly
         mock_mirror_operation.assert_called_once_with(
             upstream_url="https://github.com/owner/repo",
-            target_name="repo-mirror",
+            target_name="mirror-repo",  # prefix applied
             username="testuser",
             org=None,
             schedule="0 0 * * *",
             no_sync=False,
+            slack_webhook_url="",
         )
 
         # Verify mirror was added to recent mirrors
@@ -99,7 +100,8 @@ class TestPrivateMirrorCommand:
         mock_manager = MagicMock()
         mock_config_manager.return_value = mock_manager
         mock_manager.get_config.return_value = {
-            "github": {"username": "testuser", "default_org": ""}
+            "github": {"username": "testuser", "default_org": "", "slack_webhook_url": ""},
+            "preferences": {"default_prefix": "mirror-"},
         }
         mock_extract.side_effect = ValueError("Invalid repository URL")
 
@@ -122,7 +124,8 @@ class TestPrivateMirrorCommand:
         mock_manager = MagicMock()
         mock_config_manager.return_value = mock_manager
         mock_manager.get_config.return_value = {
-            "github": {"username": "testuser", "default_org": ""}
+            "github": {"username": "testuser", "default_org": "", "slack_webhook_url": ""},
+            "preferences": {"default_prefix": "mirror-"},
         }
         mock_mirror_operation.return_value = "https://github.com/testuser/my-custom-mirror"
 
@@ -138,6 +141,7 @@ class TestPrivateMirrorCommand:
             org=None,
             schedule="0 0 * * *",
             no_sync=False,
+            slack_webhook_url="",
         )
 
     @patch("cli_git.commands.private_mirror.check_gh_auth")
@@ -154,7 +158,8 @@ class TestPrivateMirrorCommand:
         mock_manager = MagicMock()
         mock_config_manager.return_value = mock_manager
         mock_manager.get_config.return_value = {
-            "github": {"username": "testuser", "default_org": "myorg"}
+            "github": {"username": "testuser", "default_org": "myorg", "slack_webhook_url": ""},
+            "preferences": {"default_prefix": "mirror-"},
         }
         mock_mirror_operation.return_value = "https://github.com/myorg/repo-mirror"
 
@@ -163,11 +168,12 @@ class TestPrivateMirrorCommand:
         # Verify org from config was used
         mock_mirror_operation.assert_called_once_with(
             upstream_url="https://github.com/owner/repo",
-            target_name="repo-mirror",
+            target_name="mirror-repo",  # prefix applied
             username="testuser",
             org="myorg",
             schedule="0 0 * * *",
             no_sync=False,
+            slack_webhook_url="",
         )
 
     @patch("cli_git.commands.private_mirror.check_gh_auth")
@@ -189,7 +195,8 @@ class TestPrivateMirrorCommand:
         mock_manager = MagicMock()
         mock_config_manager.return_value = mock_manager
         mock_manager.get_config.return_value = {
-            "github": {"username": "testuser", "default_org": ""}
+            "github": {"username": "testuser", "default_org": "", "slack_webhook_url": ""},
+            "preferences": {"default_prefix": "mirror-"},
         }
 
         with patch("cli_git.commands.private_mirror.private_mirror_operation"):
