@@ -1,0 +1,70 @@
+[project]
+name = "cli-git"
+version = "0.1.0"
+description = "A modern Python CLI tool for Git operations"
+readme = "README.md"
+authors = [
+    { name = "Kang Hee Yong", email = "cagojeiger@naver.com" }
+]
+keywords = ["cli", "git", "tool"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Version Control :: Git",
+    "Topic :: Utilities",
+]
+requires-python = ">=3.11"
+dependencies = [
+    "typer>=0.16.0",
+]
+
+[project.scripts]
+cli-git = "cli_git.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "python-semantic-release>=10.1.0",
+    "black>=25.1.0",
+    "isort>=6.0.1",
+    "pytest>=8.4.1",
+    "pytest-cov>=6.2.1",
+    "ruff>=0.12.1",
+    "pre-commit>=4.2.0",
+]
+
+[tool.semantic_release]
+branch = "main"
+version_toml = ["pyproject.toml:project.version"]
+version_variables = ["src/cli_git/__init__.py:__version__"]
+build_command = "uv build"
+upload_to_pypi = true
+upload_to_release = true
+commit_version_number = true
+tag_commit = true
+
+[tool.semantic_release.commit_parser_angular]
+minor_types = ["feat"]
+patch_types = ["fix", "perf"]
+
+# Tool configurations moved to config/ directory
+# Run with:
+# - uv run ruff check --config config/ruff.toml
+# - uv run pytest -c config/pytest.ini
+# - uv run coverage run --rcfile=config/.coveragerc
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
