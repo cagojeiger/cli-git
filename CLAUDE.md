@@ -21,7 +21,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    # 3. Run tests
    uv run pytest
    ```
-8. **CI Verification After Push**: When pushing to a branch with an open PR, always verify that all CI checks pass. Monitor the GitHub Actions workflow and ensure successful completion before considering the task complete.
+8. **CI Verification After Push**: When pushing to a branch with an open PR, always verify that all CI checks pass. Use `gh pr checks <PR_NUMBER>` to monitor status and `gh run view <RUN_ID> --log-failed` to debug failures. Ensure successful completion before considering the task complete.
 
 
 ## Project Overview
