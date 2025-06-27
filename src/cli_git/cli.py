@@ -10,6 +10,7 @@ import typer
 from cli_git import __version__
 from cli_git.commands.info import info_command
 from cli_git.commands.init import init_command
+from cli_git.commands.private_mirror import private_mirror_command
 
 
 def create_version_message(version: str) -> str:
@@ -85,6 +86,7 @@ def main(
 # Register commands
 app.command(name="init")(init_command)
 app.command(name="info")(info_command)
+app.command(name="private-mirror")(private_mirror_command)
 
 
 if __name__ == "__main__":
