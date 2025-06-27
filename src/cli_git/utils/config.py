@@ -46,6 +46,7 @@ class ConfigManager:
         github.add(comment("GitHub account information"))
         github["username"] = ""
         github["default_org"] = ""
+        github["slack_webhook_url"] = ""
         doc["github"] = github
         doc.add(nl())
 
@@ -53,6 +54,7 @@ class ConfigManager:
         prefs = table()
         prefs.add(comment("User preferences"))
         prefs["default_schedule"] = "0 0 * * *"
+        prefs["default_prefix"] = "mirror-"
         prefs["analysis_template"] = "backend"
         doc["preferences"] = prefs
 

@@ -8,6 +8,7 @@ from typing import Annotated, Optional
 
 import typer
 
+from cli_git.completion.completers import complete_organization, complete_prefix, complete_schedule
 from cli_git.core.workflow import generate_sync_workflow
 from cli_git.utils.config import ConfigManager
 from cli_git.utils.gh import (
@@ -20,6 +21,54 @@ from cli_git.utils.gh import (
 from cli_git.utils.git import extract_repo_info, run_git_command
 
 
+def disable_original_workflows(repo_path: Path) -> bool:
+    """Disable original workflows by moving them to workflows-disabled.
+
+    Args:
+        repo_path: Path to the repository
+
+    Returns:
+        True if workflows were disabled, False if no workflows found
+    """
+    workflows_dir = repo_path / ".github" / "workflows"
+
+    # Check if workflows directory exists
+    if not workflows_dir.exists():
+        return False
+
+    # Find workflow files
+    yml_files = list(workflows_dir.glob("*.yml"))
+    yaml_files = list(workflows_dir.glob("*.yaml"))
+    workflow_files = yml_files + yaml_files
+
+    # No workflows to disable
+    if not workflow_files:
+        return False
+
+    # Create disabled directory
+    disabled_dir = repo_path / ".github" / "workflows-disabled"
+    disabled_dir.mkdir(parents=True, exist_ok=True)
+
+    # Move workflow files
+    try:
+        for workflow_file in workflow_files:
+            target = disabled_dir / workflow_file.name
+            workflow_file.rename(target)
+
+        # Create README
+        readme_content = """# Disabled Workflows
+These workflows were automatically disabled during mirror creation.
+Original workflows from the upstream repository are preserved here for reference.
+"""
+        (disabled_dir / "README.md").write_text(readme_content)
+
+        return True
+    except Exception:
+        # If any error occurs, try to continue
+        # The mirror is more important than disabling workflows
+        return False
+
+
 def private_mirror_operation(
     upstream_url: str,
     target_name: str,
@@ -27,6 +76,7 @@ def private_mirror_operation(
     org: Optional[str] = None,
     schedule: str = "0 0 * * *",
     no_sync: bool = False,
+    slack_webhook_url: Optional[str] = None,
 ) -> str:
     """Perform the private mirror operation.
 
@@ -37,6 +87,7 @@ def private_mirror_operation(
         org: Organization name (optional)
         schedule: Cron schedule for synchronization
         no_sync: Skip automatic synchronization setup
+        slack_webhook_url: Slack webhook URL for notifications (optional)
 
     Returns:
         URL of the created mirror repository
@@ -49,6 +100,10 @@ def private_mirror_operation(
 
         # Change to repo directory
         os.chdir(repo_path)
+
+        # Disable original workflows
+        typer.echo("  ✓ Disabling original workflows")
+        workflows_disabled = disable_original_workflows(repo_path)
 
         # Create private repository
         typer.echo(f"  ✓ Creating private repository: {org or username}/{target_name}")
@@ -75,12 +130,20 @@ def private_mirror_operation(
 
             # Commit and push workflow
             run_git_command("add .github/workflows/mirror-sync.yml")
-            run_git_command('commit -m "Add automatic mirror sync workflow"')
+            if workflows_disabled:
+                commit_msg = "Disable original workflows and add mirror sync"
+            else:
+                commit_msg = "Add automatic mirror sync workflow"
+            run_git_command(f'commit -m "{commit_msg}"')
             run_git_command("push origin main")
 
-            # Add secret
+            # Add secrets
             repo_full_name = f"{org or username}/{target_name}"
             add_repo_secret(repo_full_name, "UPSTREAM_URL", upstream_url)
+
+            # Add Slack webhook secret if provided
+            if slack_webhook_url:
+                add_repo_secret(repo_full_name, "SLACK_WEBHOOK_URL", slack_webhook_url)
 
     return mirror_url
 
@@ -90,9 +153,21 @@ def private_mirror_command(
     repo: Annotated[
         Optional[str], typer.Option("--repo", "-r", help="Mirror repository name")
     ] = None,
-    org: Annotated[Optional[str], typer.Option("--org", "-o", help="Target organization")] = None,
+    org: Annotated[
+        Optional[str],
+        typer.Option(
+            "--org", "-o", help="Target organization", autocompletion=complete_organization
+        ),
+    ] = None,
+    prefix: Annotated[
+        Optional[str],
+        typer.Option("--prefix", "-p", help="Mirror name prefix", autocompletion=complete_prefix),
+    ] = None,
     schedule: Annotated[
-        str, typer.Option("--schedule", "-s", help="Sync schedule (cron format)")
+        str,
+        typer.Option(
+            "--schedule", "-s", help="Sync schedule (cron format)", autocompletion=complete_schedule
+        ),
     ] = "0 0 * * *",
     no_sync: Annotated[
         bool, typer.Option("--no-sync", help="Disable automatic synchronization")
@@ -121,12 +196,22 @@ def private_mirror_command(
         typer.echo(f"❌ {e}")
         raise typer.Exit(1)
 
+    # Get default prefix from config if not specified
+    if prefix is None:
+        prefix = config["preferences"].get("default_prefix", "mirror-")
+
     # Determine target repository name
-    target_name = repo or f"{repo_name}-mirror"
+    if repo:
+        target_name = repo  # Custom name overrides prefix
+    else:
+        target_name = f"{prefix}{repo_name}" if prefix else repo_name
 
     # Use default org from config if not specified
     if not org and config["github"]["default_org"]:
         org = config["github"]["default_org"]
+
+    # Get Slack webhook URL from config
+    slack_webhook_url = config["github"].get("slack_webhook_url", "")
 
     # Get current username
     try:
@@ -146,6 +231,7 @@ def private_mirror_command(
             org=org,
             schedule=schedule,
             no_sync=no_sync,
+            slack_webhook_url=slack_webhook_url,
         )
 
         # Save to recent mirrors

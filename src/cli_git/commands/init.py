@@ -5,7 +5,12 @@ from typing import Annotated
 import typer
 
 from cli_git.utils.config import ConfigManager
-from cli_git.utils.gh import GitHubError, check_gh_auth, get_current_username
+from cli_git.utils.gh import (
+    GitHubError,
+    check_gh_auth,
+    get_current_username,
+    get_user_organizations,
+)
 
 
 def init_command(
@@ -38,11 +43,54 @@ def init_command(
         typer.echo("   Use --force to reinitialize")
         return
 
-    # Ask for default organization
-    default_org = typer.prompt("Default organization (optional)", default="")
+    # Get user organizations
+    try:
+        orgs = get_user_organizations()
+        if orgs:
+            typer.echo("\n📋 Your GitHub organizations:")
+            for i, org in enumerate(orgs, 1):
+                typer.echo(f"   {i}. {org}")
+            typer.echo("   0. No organization (use personal account)")
+
+            # Ask for organization selection
+            while True:
+                choice = typer.prompt("\nSelect organization number", default="0")
+                try:
+                    choice_num = int(choice)
+                    if choice_num == 0:
+                        default_org = ""
+                        break
+                    elif 1 <= choice_num <= len(orgs):
+                        default_org = orgs[choice_num - 1]
+                        break
+                    else:
+                        typer.echo("Invalid choice. Please try again.")
+                except ValueError:
+                    typer.echo("Please enter a number.")
+        else:
+            typer.echo("\n📋 No organizations found. Using personal account.")
+            default_org = ""
+    except GitHubError:
+        # Fallback to manual input
+        default_org = typer.prompt("\nDefault organization (optional)", default="")
+
+    # Ask for Slack webhook URL
+    typer.echo("\n🔔 Slack Integration (optional)")
+    typer.echo("   Enter webhook URL to receive sync failure notifications")
+    slack_webhook_url = typer.prompt("Slack webhook URL (optional)", default="", hide_input=True)
+
+    # Ask for default mirror prefix
+    default_prefix = typer.prompt("\nDefault mirror prefix", default="mirror-")
 
     # Update configuration
-    updates = {"github": {"username": username, "default_org": default_org}}
+    updates = {
+        "github": {
+            "username": username,
+            "default_org": default_org,
+            "slack_webhook_url": slack_webhook_url,
+        },
+        "preferences": {"default_prefix": default_prefix},
+    }
     config_manager.update_config(updates)
 
     # Success message
@@ -51,6 +99,9 @@ def init_command(
     typer.echo(f"   GitHub username: {username}")
     if default_org:
         typer.echo(f"   Default organization: {default_org}")
+    if slack_webhook_url:
+        typer.echo("   Slack webhook: Configured ✓")
+    typer.echo(f"   Mirror prefix: {default_prefix}")
     typer.echo()
     typer.echo("Next steps:")
     typer.echo("- Run 'cli-git info' to see your configuration")

@@ -93,3 +93,28 @@ def add_repo_secret(repo: str, name: str, value: str) -> None:
         subprocess.run(cmd, input=value, capture_output=True, text=True, check=True)
     except subprocess.CalledProcessError as e:
         raise GitHubError(f"Failed to set secret '{name}': {e.stderr}")
+
+
+def get_user_organizations() -> list[str]:
+    """Get list of organizations the user belongs to.
+
+    Returns:
+        List of organization names
+
+    Raises:
+        GitHubError: If unable to fetch organizations
+    """
+    try:
+        result = subprocess.run(
+            ["gh", "api", "user/orgs", "-q", ".[].login"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        # Split by newlines and filter empty strings
+        orgs = [org.strip() for org in result.stdout.strip().split("\n") if org.strip()]
+        return orgs
+    except subprocess.CalledProcessError as e:
+        raise GitHubError(f"Failed to get organizations: {e.stderr}")
+    except FileNotFoundError:
+        raise GitHubError("gh CLI not found. Please install GitHub CLI.")
