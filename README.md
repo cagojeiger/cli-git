@@ -1,41 +1,57 @@
 # cli-git
 
-A modern Python CLI tool for Git operations with enhanced user experience.
+현대적인 Git 작업을 위한 Python CLI 도구
 
-## Features
+## 빠른 시작
 
-- 🚀 Fast and intuitive Git commands
-- 🎨 Beautiful, colorized output
-- 🔧 Built with modern Python tooling (uv, typer)
-- 📦 Easy installation via PyPI
-- 🧪 100% test coverage with TDD approach
-- 🎯 Functional programming paradigm
+### 설치
 
-## Installation
+#### pipx 사용 (권장)
+
+```bash
+# pipx가 없다면 먼저 설치
+pip install pipx
+pipx ensurepath
+
+# cli-git 설치
+pipx install cli-git
+```
+
+#### pip 사용
 
 ```bash
 pip install cli-git
 ```
 
-## Usage
+#### 개발 버전 설치 (TestPyPI)
 
 ```bash
-# Check version
-cli-git --version
-
-# More commands coming soon!
+pipx install --index-url https://test.pypi.org/simple/ cli-git
 ```
 
-## Development
+### 기본 사용법
 
-This project uses:
-- **uv** for fast package management
-- **typer** for CLI framework
-- **pytest** for testing
-- **ruff**, **black**, **isort** for code quality
+```bash
+# 버전 확인
+cli-git --version
 
-See [CLAUDE.md](CLAUDE.md) for detailed development guidelines.
+# 도움말
+cli-git --help
+```
 
-## License
+## 주요 기능
 
-MIT License - see [LICENSE](LICENSE) file.
+- 🚀 빠르고 직관적인 Git 명령어
+- 🎨 아름답고 색상이 적용된 출력
+- 🔧 현대적인 Python 도구 사용 (uv, typer)
+- 📦 PyPI를 통한 간편한 설치
+- 🧪 TDD 방식으로 100% 테스트 커버리지
+- 🎯 함수형 프로그래밍 패러다임
+
+## 개발
+
+개발에 참여하려면 [CLAUDE.md](CLAUDE.md)의 개발 가이드라인을 참고하세요.
+
+## 라이선스
+
+MIT License - [LICENSE](LICENSE) 파일 참조

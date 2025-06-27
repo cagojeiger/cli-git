@@ -39,6 +39,8 @@ dev = [
     "pytest-cov>=6.2.1",
     "ruff>=0.12.1",
     "pre-commit>=4.2.0",
+    "twine>=6.1.0",
+    "build>=1.0.0",
 ]
 
 [tool.semantic_release]
@@ -46,7 +48,7 @@ branch = "main"
 version_toml = ["pyproject.toml:project.version"]
 version_variables = ["src/cli_git/__init__.py:__version__"]
 build_command = "uv build"
-upload_to_pypi = true
+upload_to_pypi = false
 upload_to_release = true
 commit_version_number = true
 tag_commit = true
