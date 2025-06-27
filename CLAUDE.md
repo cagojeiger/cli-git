@@ -209,3 +209,15 @@ To set up PyPI publishing:
 - **Line Length**: 100 characters (black and isort configured)
 - **Python Versions**: Support 3.11 and 3.12
 - **Pre-commit**: Always run before committing (`uv run pre-commit run --all-files`)
+
+## Context Management
+
+When working on complex features or conducting deep analysis:
+1. **Create context files**: Important insights and plans should be saved as `.context/00-*.md`
+2. **Numbering system**: Use two-digit prefixes (00-99) to maintain order
+3. **Content structure**: Each context file should include:
+   - Clear title and purpose
+   - Detailed analysis or plan
+   - Technical considerations
+   - Next steps
+4. **Git ignored**: `.context/` directory is in .gitignore to keep these notes private
