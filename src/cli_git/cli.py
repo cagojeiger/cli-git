@@ -8,6 +8,8 @@ from typing import Annotated
 import typer
 
 from cli_git import __version__
+from cli_git.commands.info import info_command
+from cli_git.commands.init import init_command
 
 
 def create_version_message(version: str) -> str:
@@ -78,6 +80,11 @@ def main(
     # If no subcommand is provided, just exit successfully
     if ctx.invoked_subcommand is None:
         pass  # Version is handled by the callback
+
+
+# Register commands
+app.command(name="init")(init_command)
+app.command(name="info")(info_command)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,148 @@
+"""Tests for init command."""
+
+from unittest.mock import MagicMock, patch
+
+import pytest
+from typer.testing import CliRunner
+
+from cli_git.cli import app
+
+
+class TestInitCommand:
+    """Test cases for init command."""
+
+    @pytest.fixture
+    def runner(self):
+        """Create CLI test runner."""
+        return CliRunner()
+
+    @patch("cli_git.commands.init.check_gh_auth")
+    @patch("cli_git.commands.init.get_current_username")
+    @patch("cli_git.commands.init.ConfigManager")
+    def test_init_success(
+        self, mock_config_manager, mock_get_username, mock_check_auth, runner, tmp_path
+    ):
+        """Test successful initialization."""
+        # Setup mocks
+        mock_check_auth.return_value = True
+        mock_get_username.return_value = "testuser"
+        mock_manager = MagicMock()
+        mock_config_manager.return_value = mock_manager
+        mock_manager.get_config.return_value = {
+            "github": {"username": "", "default_org": ""},
+            "preferences": {"default_schedule": "0 0 * * *"},
+        }
+
+        # Run command
+        result = runner.invoke(app, ["init"])
+
+        # Verify
+        assert result.exit_code == 0
+        assert "✅ Configuration initialized successfully!" in result.stdout
+        assert "GitHub username: testuser" in result.stdout
+
+        # Check config was updated
+        mock_manager.update_config.assert_called_once()
+        config_updates = mock_manager.update_config.call_args[0][0]
+        assert config_updates["github"]["username"] == "testuser"
+
+    @patch("cli_git.commands.init.check_gh_auth")
+    def test_init_no_gh_auth(self, mock_check_auth, runner):
+        """Test init when gh is not authenticated."""
+        mock_check_auth.return_value = False
+
+        result = runner.invoke(app, ["init"])
+
+        assert result.exit_code == 1
+        assert "❌ GitHub CLI is not authenticated" in result.stdout
+        assert "Please run: gh auth login" in result.stdout
+
+    @patch("cli_git.commands.init.check_gh_auth")
+    @patch("cli_git.commands.init.get_current_username")
+    @patch("cli_git.commands.init.ConfigManager")
+    @patch("cli_git.commands.init.typer.prompt")
+    def test_init_with_default_org(
+        self, mock_prompt, mock_config_manager, mock_get_username, mock_check_auth, runner
+    ):
+        """Test init with default organization."""
+        # Setup mocks
+        mock_check_auth.return_value = True
+        mock_get_username.return_value = "testuser"
+        mock_prompt.return_value = "myorg"
+        mock_manager = MagicMock()
+        mock_config_manager.return_value = mock_manager
+        mock_manager.get_config.return_value = {
+            "github": {"username": "", "default_org": ""},
+            "preferences": {"default_schedule": "0 0 * * *"},
+        }
+
+        # Run command
+        result = runner.invoke(app, ["init"])
+
+        # Verify
+        assert result.exit_code == 0
+        assert "Default organization: myorg" in result.stdout
+
+        # Check prompt was called
+        mock_prompt.assert_called_once_with("Default organization (optional)", default="")
+
+        # Check config was updated with org
+        config_updates = mock_manager.update_config.call_args[0][0]
+        assert config_updates["github"]["default_org"] == "myorg"
+
+    @patch("cli_git.commands.init.check_gh_auth")
+    @patch("cli_git.commands.init.get_current_username")
+    @patch("cli_git.commands.init.ConfigManager")
+    def test_init_already_initialized(
+        self, mock_config_manager, mock_get_username, mock_check_auth, runner
+    ):
+        """Test init when already initialized."""
+        # Setup mocks
+        mock_check_auth.return_value = True
+        mock_get_username.return_value = "testuser"
+        mock_manager = MagicMock()
+        mock_config_manager.return_value = mock_manager
+        mock_manager.get_config.return_value = {
+            "github": {"username": "existinguser", "default_org": "existingorg"},
+            "preferences": {"default_schedule": "0 0 * * *"},
+        }
+
+        # Run command without --force
+        result = runner.invoke(app, ["init"])
+
+        # Should warn about existing config
+        assert "⚠️  Configuration already exists" in result.stdout
+        assert "Use --force to reinitialize" in result.stdout
+        assert result.exit_code == 0
+
+        # Config should not be updated
+        mock_manager.update_config.assert_not_called()
+
+    @patch("cli_git.commands.init.check_gh_auth")
+    @patch("cli_git.commands.init.get_current_username")
+    @patch("cli_git.commands.init.ConfigManager")
+    def test_init_force_reinitialize(
+        self, mock_config_manager, mock_get_username, mock_check_auth, runner
+    ):
+        """Test forced reinitialization."""
+        # Setup mocks
+        mock_check_auth.return_value = True
+        mock_get_username.return_value = "newuser"
+        mock_manager = MagicMock()
+        mock_config_manager.return_value = mock_manager
+        mock_manager.get_config.return_value = {
+            "github": {"username": "olduser", "default_org": "oldorg"},
+            "preferences": {"default_schedule": "0 0 * * *"},
+        }
+
+        # Run command with --force
+        result = runner.invoke(app, ["init", "--force"])
+
+        # Should succeed and update
+        assert result.exit_code == 0
+        assert "✅ Configuration initialized successfully!" in result.stdout
+
+        # Config should be updated
+        mock_manager.update_config.assert_called_once()
+        config_updates = mock_manager.update_config.call_args[0][0]
+        assert config_updates["github"]["username"] == "newuser"

@@ -166,6 +166,7 @@ name = "cli-git"
 version = "1.0.0"
 source = { editable = "." }
 dependencies = [
+    { name = "tomlkit" },
     { name = "typer" },
 ]
 
@@ -183,7 +184,10 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "typer", specifier = ">=0.16.0" }]
+requires-dist = [
+    { name = "tomlkit", specifier = ">=0.13.2" },
+    { name = "typer", specifier = ">=0.16.0" },
+]
 
 [package.metadata.requires-dev]
 dev = [
