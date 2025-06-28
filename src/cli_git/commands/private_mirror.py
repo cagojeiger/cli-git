@@ -1,6 +1,7 @@
 """Create a private mirror of a public repository."""
 
 import os
+import shutil
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,6 +19,7 @@ from cli_git.utils.gh import (
     check_gh_auth,
     create_private_repo,
     get_current_username,
+    get_upstream_default_branch,
 )
 from cli_git.utils.git import extract_repo_info, get_default_branch, run_git_command
 from cli_git.utils.validators import (
@@ -30,51 +32,31 @@ from cli_git.utils.validators import (
 )
 
 
-def disable_original_workflows(repo_path: Path) -> bool:
-    """Disable original workflows by moving them to workflows-disabled.
+def clean_github_directory(repo_path: Path) -> bool:
+    """Remove the entire .github directory from the repository.
 
     Args:
         repo_path: Path to the repository
 
     Returns:
-        True if workflows were disabled, False if no workflows found
+        True if .github directory was removed, False if not found
     """
-    workflows_dir = repo_path / ".github" / "workflows"
+    github_dir = repo_path / ".github"
 
-    # Check if workflows directory exists
-    if not workflows_dir.exists():
+    # Check if .github directory exists
+    if not github_dir.exists():
         return False
 
-    # Find workflow files
-    yml_files = list(workflows_dir.glob("*.yml"))
-    yaml_files = list(workflows_dir.glob("*.yaml"))
-    workflow_files = yml_files + yaml_files
-
-    # No workflows to disable
-    if not workflow_files:
-        return False
-
-    # Create disabled directory
-    disabled_dir = repo_path / ".github" / "workflows-disabled"
-    disabled_dir.mkdir(parents=True, exist_ok=True)
-
-    # Move workflow files
+    # Remove entire .github directory
     try:
-        for workflow_file in workflow_files:
-            target = disabled_dir / workflow_file.name
-            workflow_file.rename(target)
-
-        # Create README
-        readme_content = """# Disabled Workflows
-These workflows were automatically disabled during mirror creation.
-Original workflows from the upstream repository are preserved here for reference.
-"""
-        (disabled_dir / "README.md").write_text(readme_content)
-
+        shutil.rmtree(github_dir)
         return True
-    except Exception:
-        # If any error occurs, try to continue
-        # The mirror is more important than disabling workflows
+    except (OSError, PermissionError) as e:
+        # Log specific error but continue
+        # The mirror is more important than cleaning .github
+        import sys
+
+        print(f"Warning: Failed to remove .github directory: {e}", file=sys.stderr)
         return False
 
 
@@ -110,14 +92,14 @@ def private_mirror_operation(
         # Change to repo directory
         os.chdir(repo_path)
 
-        # Disable original workflows
-        typer.echo("  ✓ Disabling original workflows")
-        workflows_disabled = disable_original_workflows(repo_path)
+        # Clean .github directory
+        typer.echo("  ✓ Removing original .github directory")
+        github_cleaned = clean_github_directory(repo_path)
 
-        # Commit the workflow changes if any were disabled
-        if workflows_disabled:
-            run_git_command("add .")
-            run_git_command('commit -m "Disable original workflows"')
+        # Commit the changes if .github was removed
+        if github_cleaned:
+            run_git_command("add -A")
+            run_git_command('commit -m "Remove original .github directory"')
 
         # Create private repository
         typer.echo(f"  ✓ Creating private repository: {org or username}/{target_name}")
@@ -133,18 +115,24 @@ def private_mirror_operation(
         run_git_command("push origin --tags")
 
         if not no_sync:
+            # Get upstream default branch
+            typer.echo("  ✓ Getting upstream default branch")
+            upstream_default_branch = get_upstream_default_branch(upstream_url)
+
             # Create workflow file
             typer.echo(f"  ✓ Setting up automatic sync ({schedule})")
             workflow_dir = repo_path / ".github" / "workflows"
             workflow_dir.mkdir(parents=True, exist_ok=True)
 
-            workflow_content = generate_sync_workflow(upstream_url, schedule)
+            workflow_content = generate_sync_workflow(
+                upstream_url, schedule, upstream_default_branch
+            )
             workflow_file = workflow_dir / "mirror-sync.yml"
             workflow_file.write_text(workflow_content)
 
             # Commit and push workflow
             run_git_command("add .github/workflows/mirror-sync.yml")
-            # workflows_disabled already committed separately, so always use simple message
+            # Commit message for sync workflow
             commit_msg = "Add automatic mirror sync workflow"
             run_git_command(f'commit -m "{commit_msg}"')
 
@@ -167,6 +155,7 @@ def private_mirror_operation(
             # Add secrets
             repo_full_name = f"{org or username}/{target_name}"
             add_repo_secret(repo_full_name, "UPSTREAM_URL", upstream_url)
+            add_repo_secret(repo_full_name, "UPSTREAM_DEFAULT_BRANCH", upstream_default_branch)
 
             # Add Slack webhook secret if provided
             if slack_webhook_url:

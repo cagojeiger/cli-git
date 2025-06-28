@@ -1,12 +1,13 @@
 """GitHub Actions workflow generation for mirror synchronization."""
 
 
-def generate_sync_workflow(upstream_url: str, schedule: str) -> str:
+def generate_sync_workflow(upstream_url: str, schedule: str, upstream_default_branch: str) -> str:
     """Generate GitHub Actions workflow for mirror synchronization.
 
     Args:
         upstream_url: URL of the upstream repository
         schedule: Cron schedule for synchronization
+        upstream_default_branch: Default branch of the upstream repository
 
     Returns:
         YAML content for the workflow file
@@ -44,6 +45,7 @@ jobs:
         id: sync
         env:
           UPSTREAM_URL: ${{{{ secrets.UPSTREAM_URL }}}}
+          UPSTREAM_DEFAULT_BRANCH: ${{{{ secrets.UPSTREAM_DEFAULT_BRANCH }}}}
           GH_TOKEN: ${{{{ secrets.GITHUB_TOKEN }}}}
         run: |
           echo "Adding upstream remote..."
@@ -52,10 +54,54 @@ jobs:
           echo "Fetching from upstream..."
           git fetch upstream
 
+          # Get upstream default branch - prefer dynamic detection
+          DETECTED_BRANCH=$(git ls-remote --symref upstream HEAD | awk '/^ref:/ {{sub(/refs\\/heads\\//, "", $2); print $2}}')
+
+          if [ -n "$DETECTED_BRANCH" ]; then
+            DEFAULT_BRANCH="$DETECTED_BRANCH"
+            echo "Detected upstream branch: $DEFAULT_BRANCH"
+          elif [ -n "$UPSTREAM_DEFAULT_BRANCH" ]; then
+            DEFAULT_BRANCH="$UPSTREAM_DEFAULT_BRANCH"
+            echo "Using configured upstream branch: $DEFAULT_BRANCH"
+          else
+            echo "ERROR: Could not determine upstream default branch"
+            exit 1
+          fi
+
+          # Get current branch
+          CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+
+          # Save current .github directory
+          # Use mktemp for secure temporary directory
+          if [ -n "${{{{ runner.temp }}}}" ]; then
+            BACKUP_DIR=$(mktemp -d -p "${{{{ runner.temp }}}}" github-backup-XXXXXX)
+          else
+            BACKUP_DIR=$(mktemp -d /tmp/github-backup-XXXXXX)
+          fi
+          echo "Backup directory: $BACKUP_DIR"
+
+          if [ -d .github ]; then
+            cp -r .github "$BACKUP_DIR/"
+          fi
+
           echo "Attempting rebase..."
-          if git rebase upstream/main; then
-            echo "✅ Rebase successful, pushing to main"
-            git push origin main --force-with-lease
+          if git rebase upstream/$DEFAULT_BRANCH; then
+            echo "✅ Rebase successful"
+
+            # Restore our .github directory
+            rm -rf .github
+            if [ -d "$BACKUP_DIR/.github" ]; then
+              cp -r "$BACKUP_DIR/.github" .
+              git add .github
+              git commit -m "Restore .github directory" || echo "No changes to .github directory"
+            else
+              echo "WARNING: No .github directory to restore"
+            fi
+
+            # Cleanup backup
+            rm -rf "$BACKUP_DIR"
+
+            git push origin $CURRENT_BRANCH --force-with-lease
             echo "has_conflicts=false" >> $GITHUB_OUTPUT
           else
             echo "❌ Rebase conflicts detected"
@@ -69,26 +115,41 @@ jobs:
         env:
           GH_TOKEN: ${{{{ secrets.GITHUB_TOKEN }}}}
         run: |
-          # Create branch for conflict resolution
-          BRANCH_NAME="sync/upstream-$(date +%Y%m%d-%H%M%S)"
+          # Create branch for conflict resolution with unique name
+          BRANCH_NAME="sync/upstream-$(date +%Y%m%d-%H%M%S)-${{{{ github.run_id }}}}"
           git checkout -b $BRANCH_NAME
 
           # Add upstream as remote and fetch
           git fetch upstream
 
+          # Get upstream default branch - prefer dynamic detection
+          DETECTED_BRANCH=$(git ls-remote --symref upstream HEAD | awk '/^ref:/ {{sub(/refs\\/heads\\//, "", $2); print $2}}')
+
+          if [ -n "$DETECTED_BRANCH" ]; then
+            DEFAULT_BRANCH="$DETECTED_BRANCH"
+          elif [ -n "${{{{ secrets.UPSTREAM_DEFAULT_BRANCH }}}}" ]; then
+            DEFAULT_BRANCH="${{{{ secrets.UPSTREAM_DEFAULT_BRANCH }}}}"
+          else
+            echo "ERROR: Could not determine upstream default branch"
+            exit 1
+          fi
+
           # Try merge instead of rebase for conflict resolution
-          git merge upstream/main --no-edit || true
+          git merge upstream/$DEFAULT_BRANCH --no-edit || true
 
           # Commit the conflict state
           git add -A
           git commit -m "🔴 Merge conflict from upstream - manual resolution required" || true
           git push origin $BRANCH_NAME
 
+          # Get the default branch of the current repository
+          CURRENT_DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@')
+
           # Create PR
           PR_URL=$(gh pr create \\
             --title "🔴 [Conflict] Sync from upstream" \\
             --body "⚠️ Merge conflicts detected. Please resolve manually and merge." \\
-            --base main \\
+            --base $CURRENT_DEFAULT_BRANCH \\
             --head $BRANCH_NAME)
 
           echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT

@@ -1,7 +1,7 @@
 """Tests for gh CLI utilities."""
 
 import subprocess
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
@@ -188,3 +188,50 @@ class TestGhUtils:
 
         with pytest.raises(GitHubError, match="Failed to get organizations"):
             get_user_organizations()
+
+    @patch("subprocess.run")
+    def test_get_upstream_default_branch_success(self, mock_run):
+        """Test successfully getting upstream default branch."""
+        from cli_git.utils.gh import get_upstream_default_branch
+
+        mock_run.return_value = Mock(returncode=0, stdout="main\n", stderr="", check=True)
+
+        branch = get_upstream_default_branch("https://github.com/owner/repo")
+
+        assert branch == "main"
+        mock_run.assert_called_once_with(
+            ["gh", "api", "repos/owner/repo", "-q", ".default_branch"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+
+    @patch("subprocess.run")
+    def test_get_upstream_default_branch_master(self, mock_run):
+        """Test getting upstream default branch that is master."""
+        from cli_git.utils.gh import get_upstream_default_branch
+
+        mock_run.return_value = Mock(returncode=0, stdout="master\n", stderr="", check=True)
+
+        branch = get_upstream_default_branch("https://github.com/owner/repo")
+
+        assert branch == "master"
+
+    @patch("subprocess.run")
+    def test_get_upstream_default_branch_failure(self, mock_run):
+        """Test handling error when getting default branch."""
+        from cli_git.utils.gh import get_upstream_default_branch
+
+        mock_run.side_effect = subprocess.CalledProcessError(
+            1, ["gh", "api"], stderr="Repository not found"
+        )
+
+        with pytest.raises(GitHubError, match="Failed to get default branch"):
+            get_upstream_default_branch("https://github.com/owner/repo")
+
+    def test_get_upstream_default_branch_invalid_url(self):
+        """Test handling invalid repository URL."""
+        from cli_git.utils.gh import get_upstream_default_branch
+
+        with pytest.raises(GitHubError, match="Invalid repository URL"):
+            get_upstream_default_branch("not-a-valid-url")

@@ -3,6 +3,8 @@
 import subprocess
 from typing import Optional
 
+from cli_git.utils.git import extract_repo_info
+
 
 class GitHubError(Exception):
     """Custom exception for GitHub-related errors."""
@@ -129,5 +131,34 @@ def get_user_organizations() -> list[str]:
         return orgs
     except subprocess.CalledProcessError as e:
         raise GitHubError(f"Failed to get organizations: {e.stderr}")
+    except FileNotFoundError:
+        raise GitHubError("gh CLI not found. Please install GitHub CLI.")
+
+
+def get_upstream_default_branch(upstream_url: str) -> str:
+    """Get the default branch of an upstream repository.
+
+    Args:
+        upstream_url: URL of the upstream repository
+
+    Returns:
+        Name of the default branch
+
+    Raises:
+        GitHubError: If unable to fetch repository information
+    """
+    try:
+        owner, repo = extract_repo_info(upstream_url)
+        result = subprocess.run(
+            ["gh", "api", f"repos/{owner}/{repo}", "-q", ".default_branch"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return result.stdout.strip()
+    except subprocess.CalledProcessError as e:
+        raise GitHubError(f"Failed to get default branch: {e.stderr}")
+    except ValueError as e:
+        raise GitHubError(f"Invalid repository URL: {e}")
     except FileNotFoundError:
         raise GitHubError("gh CLI not found. Please install GitHub CLI.")
