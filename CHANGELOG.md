@@ -2,6 +2,25 @@
 
 <!-- version list -->
 
+## v1.2.0 (2025-06-28)
+
+### Bug Fixes
+
+- Improve mirror functionality robustness and code quality
+  ([#5](https://github.com/cagojeiger/cli-git/pull/5),
+  [`162aeb7`](https://github.com/cagojeiger/cli-git/commit/162aeb72e36f54356d5ffa876f6148b433336951))
+
+- Improve mirror sync robustness and error handling
+  ([#5](https://github.com/cagojeiger/cli-git/pull/5),
+  [`162aeb7`](https://github.com/cagojeiger/cli-git/commit/162aeb72e36f54356d5ffa876f6148b433336951))
+
+### Features
+
+- Enhance mirror functionality with dynamic branch detection and .github cleanup
+  ([#5](https://github.com/cagojeiger/cli-git/pull/5),
+  [`162aeb7`](https://github.com/cagojeiger/cli-git/commit/162aeb72e36f54356d5ffa876f6148b433336951))
+
+
 ## v1.1.1 (2025-06-28)
 
 ### Bug Fixes
