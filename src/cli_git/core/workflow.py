@@ -17,6 +17,10 @@ def generate_sync_workflow(upstream_url: str, schedule: str) -> str:
     - cron: '{schedule}'
   workflow_dispatch:
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   sync:
     runs-on: ubuntu-latest
@@ -96,7 +100,84 @@ jobs:
           git fetch upstream --tags
           git push origin --tags
 
-  notify-slack:
+  notify-slack-failure:
+    needs: sync
+    if: failure()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check for Slack webhook
+        id: check_webhook
+        run: |
+          if [[ -n "${{{{ secrets.SLACK_WEBHOOK_URL }}}}" ]]; then
+            echo "has_webhook=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_webhook=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Send Slack notification for failure
+        if: steps.check_webhook.outputs.has_webhook == 'true'
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{{{ secrets.SLACK_WEBHOOK_URL }}}}
+          webhook-type: incoming-webhook
+          payload: |
+            {{
+              "text": "❌ Workflow Failed",
+              "blocks": [
+                {{
+                  "type": "section",
+                  "text": {{
+                    "type": "mrkdwn",
+                    "text": "❌ *Workflow Failed*"
+                  }}
+                }},
+                {{
+                  "type": "section",
+                  "fields": [
+                    {{
+                      "type": "mrkdwn",
+                      "text": "*Workflow:*\\nMirror Sync"
+                    }},
+                    {{
+                      "type": "mrkdwn",
+                      "text": "*Repository:*\\n${{{{ github.repository }}}}"
+                    }}
+                  ]
+                }},
+                {{
+                  "type": "section",
+                  "fields": [
+                    {{
+                      "type": "mrkdwn",
+                      "text": "*Actor:*\\n${{{{ github.actor }}}}"
+                    }},
+                    {{
+                      "type": "mrkdwn",
+                      "text": "*Branch:*\\n${{{{ github.ref_name }}}}"
+                    }}
+                  ]
+                }},
+                {{
+                  "type": "section",
+                  "text": {{
+                    "type": "mrkdwn",
+                    "text": "*Workflow URL:*\\n<${{{{ github.server_url }}}}/${{{{ github.repository }}}}/actions/runs/${{{{ github.run_id }}}}|View Failed Workflow>"
+                  }}
+                }},
+                {{
+                  "type": "context",
+                  "elements": [
+                    {{
+                      "type": "mrkdwn",
+                      "text": "Click the link above to view the failed workflow details"
+                    }}
+                  ]
+                }}
+              ]
+            }}
+
+  notify-slack-conflict:
     needs: sync
     if: needs.sync.outputs.has_conflicts == 'true'
     runs-on: ubuntu-latest
@@ -111,7 +192,7 @@ jobs:
             echo "has_webhook=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Send Slack notification
+      - name: Send Slack notification for conflict
         if: steps.check_webhook.outputs.has_webhook == 'true'
         uses: slackapi/slack-github-action@v2.0.0
         with:
