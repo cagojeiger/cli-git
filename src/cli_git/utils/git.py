@@ -1,6 +1,7 @@
 """Git command utilities."""
 
 import re
+import shlex
 import subprocess
 from pathlib import Path
 from typing import Optional, Tuple
@@ -19,7 +20,7 @@ def run_git_command(cmd: str, cwd: Optional[Path] = None) -> str:
     Raises:
         subprocess.CalledProcessError: If command fails
     """
-    full_cmd = ["git"] + cmd.split()
+    full_cmd = ["git"] + shlex.split(cmd)
 
     result = subprocess.run(full_cmd, capture_output=True, text=True, cwd=cwd)
 

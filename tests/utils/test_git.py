@@ -84,3 +84,28 @@ class TestGitUtils:
         """Test extracting repo info from URL without owner."""
         with pytest.raises(ValueError, match="Invalid repository URL"):
             extract_repo_info("https://github.com/repo-name")
+
+    @patch("subprocess.run")
+    def test_run_git_command_with_quotes(self, mock_run):
+        """Test git command with quoted arguments."""
+        mock_run.return_value = MagicMock(returncode=0, stdout="[main abcd123] Test message\n")
+
+        result = run_git_command('commit -m "This is a test message with spaces"')
+
+        # Verify the command was split correctly
+        expected_cmd = ["git", "commit", "-m", "This is a test message with spaces"]
+        mock_run.assert_called_once_with(expected_cmd, capture_output=True, text=True, cwd=None)
+        assert result == "[main abcd123] Test message"
+
+    @patch("subprocess.run")
+    def test_run_git_command_with_complex_message(self, mock_run):
+        """Test git command with complex commit message."""
+        mock_run.return_value = MagicMock(returncode=0, stdout="[main abcd123] Complex message\n")
+
+        # Test the exact message that was failing
+        result = run_git_command('commit -m "Disable original workflows and add mirror sync"')
+
+        # Verify the command was split correctly
+        expected_cmd = ["git", "commit", "-m", "Disable original workflows and add mirror sync"]
+        mock_run.assert_called_once_with(expected_cmd, capture_output=True, text=True, cwd=None)
+        assert result == "[main abcd123] Complex message"
