@@ -54,22 +54,35 @@ jobs:
           echo "Fetching from upstream..."
           git fetch upstream
 
-          # Get upstream default branch dynamically or use secret
-          if [ -n "$UPSTREAM_DEFAULT_BRANCH" ]; then
+          # Get upstream default branch - prefer dynamic detection
+          DETECTED_BRANCH=$(git ls-remote --symref upstream HEAD | awk '/^ref:/ {{sub(/refs\\/heads\\//, "", $2); print $2}}')
+
+          if [ -n "$DETECTED_BRANCH" ]; then
+            DEFAULT_BRANCH="$DETECTED_BRANCH"
+            echo "Detected upstream branch: $DEFAULT_BRANCH"
+          elif [ -n "$UPSTREAM_DEFAULT_BRANCH" ]; then
             DEFAULT_BRANCH="$UPSTREAM_DEFAULT_BRANCH"
+            echo "Using configured upstream branch: $DEFAULT_BRANCH"
           else
-            DEFAULT_BRANCH=$(git ls-remote --symref upstream HEAD | awk '/^ref:/ {{sub(/refs\\/heads\\//, "", $2); print $2}}')
+            echo "ERROR: Could not determine upstream default branch"
+            exit 1
           fi
-          echo "Using upstream branch: $DEFAULT_BRANCH"
 
           # Get current branch
           CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 
           # Save current .github directory
-          # Use RUNNER_TEMP in GitHub Actions, fallback to /tmp
-          BACKUP_DIR="${{{{ runner.temp }}}}/github-backup-$$"
-          mkdir -p "$BACKUP_DIR"
-          cp -r .github "$BACKUP_DIR/" || true
+          # Use mktemp for secure temporary directory
+          if [ -n "${{{{ runner.temp }}}}" ]; then
+            BACKUP_DIR=$(mktemp -d -p "${{{{ runner.temp }}}}" github-backup-XXXXXX)
+          else
+            BACKUP_DIR=$(mktemp -d /tmp/github-backup-XXXXXX)
+          fi
+          echo "Backup directory: $BACKUP_DIR"
+
+          if [ -d .github ]; then
+            cp -r .github "$BACKUP_DIR/"
+          fi
 
           echo "Attempting rebase..."
           if git rebase upstream/$DEFAULT_BRANCH; then
@@ -77,9 +90,13 @@ jobs:
 
             # Restore our .github directory
             rm -rf .github
-            cp -r "$BACKUP_DIR/.github" . || true
-            git add .github
-            git commit -m "Restore .github directory" || true
+            if [ -d "$BACKUP_DIR/.github" ]; then
+              cp -r "$BACKUP_DIR/.github" .
+              git add .github
+              git commit -m "Restore .github directory" || echo "No changes to .github directory"
+            else
+              echo "WARNING: No .github directory to restore"
+            fi
 
             # Cleanup backup
             rm -rf "$BACKUP_DIR"
@@ -98,18 +115,23 @@ jobs:
         env:
           GH_TOKEN: ${{{{ secrets.GITHUB_TOKEN }}}}
         run: |
-          # Create branch for conflict resolution
-          BRANCH_NAME="sync/upstream-$(date +%Y%m%d-%H%M%S)"
+          # Create branch for conflict resolution with unique name
+          BRANCH_NAME="sync/upstream-$(date +%Y%m%d-%H%M%S)-${{{{ github.run_id }}}}"
           git checkout -b $BRANCH_NAME
 
           # Add upstream as remote and fetch
           git fetch upstream
 
-          # Get upstream default branch
-          if [ -n "${{{{ secrets.UPSTREAM_DEFAULT_BRANCH }}}}" ]; then
+          # Get upstream default branch - prefer dynamic detection
+          DETECTED_BRANCH=$(git ls-remote --symref upstream HEAD | awk '/^ref:/ {{sub(/refs\\/heads\\//, "", $2); print $2}}')
+
+          if [ -n "$DETECTED_BRANCH" ]; then
+            DEFAULT_BRANCH="$DETECTED_BRANCH"
+          elif [ -n "${{{{ secrets.UPSTREAM_DEFAULT_BRANCH }}}}" ]; then
             DEFAULT_BRANCH="${{{{ secrets.UPSTREAM_DEFAULT_BRANCH }}}}"
           else
-            DEFAULT_BRANCH=$(git ls-remote --symref upstream HEAD | awk '/^ref:/ {{sub(/refs\\/heads\\//, "", $2); print $2}}')
+            echo "ERROR: Could not determine upstream default branch"
+            exit 1
           fi
 
           # Try merge instead of rebase for conflict resolution

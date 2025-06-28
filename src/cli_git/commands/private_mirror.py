@@ -51,9 +51,12 @@ def clean_github_directory(repo_path: Path) -> bool:
     try:
         shutil.rmtree(github_dir)
         return True
-    except Exception:
-        # If any error occurs, try to continue
+    except (OSError, PermissionError) as e:
+        # Log specific error but continue
         # The mirror is more important than cleaning .github
+        import sys
+
+        print(f"Warning: Failed to remove .github directory: {e}", file=sys.stderr)
         return False
 
 
