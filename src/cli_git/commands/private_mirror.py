@@ -1,6 +1,7 @@
 """Create a private mirror of a public repository."""
 
 import os
+import shutil
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -48,8 +49,6 @@ def clean_github_directory(repo_path: Path) -> bool:
 
     # Remove entire .github directory
     try:
-        import shutil
-
         shutil.rmtree(github_dir)
         return True
     except Exception:

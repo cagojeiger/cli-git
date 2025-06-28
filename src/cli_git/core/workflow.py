@@ -66,7 +66,10 @@ jobs:
           CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 
           # Save current .github directory
-          cp -r .github /tmp/github-backup || true
+          # Use RUNNER_TEMP in GitHub Actions, fallback to /tmp
+          BACKUP_DIR="${{{{ runner.temp }}}}/github-backup-$$"
+          mkdir -p "$BACKUP_DIR"
+          cp -r .github "$BACKUP_DIR/" || true
 
           echo "Attempting rebase..."
           if git rebase upstream/$DEFAULT_BRANCH; then
@@ -74,9 +77,12 @@ jobs:
 
             # Restore our .github directory
             rm -rf .github
-            cp -r /tmp/github-backup .github || true
+            cp -r "$BACKUP_DIR/.github" . || true
             git add .github
             git commit -m "Restore .github directory" || true
+
+            # Cleanup backup
+            rm -rf "$BACKUP_DIR"
 
             git push origin $CURRENT_BRANCH --force-with-lease
             echo "has_conflicts=false" >> $GITHUB_OUTPUT
@@ -114,11 +120,14 @@ jobs:
           git commit -m "🔴 Merge conflict from upstream - manual resolution required" || true
           git push origin $BRANCH_NAME
 
+          # Get the default branch of the current repository
+          CURRENT_DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@')
+
           # Create PR
           PR_URL=$(gh pr create \\
             --title "🔴 [Conflict] Sync from upstream" \\
             --body "⚠️ Merge conflicts detected. Please resolve manually and merge." \\
-            --base main \\
+            --base $CURRENT_DEFAULT_BRANCH \\
             --head $BRANCH_NAME)
 
           echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
