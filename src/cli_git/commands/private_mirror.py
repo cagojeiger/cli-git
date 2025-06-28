@@ -113,6 +113,11 @@ def private_mirror_operation(
         typer.echo("  ✓ Disabling original workflows")
         workflows_disabled = disable_original_workflows(repo_path)
 
+        # Commit the workflow changes if any were disabled
+        if workflows_disabled:
+            run_git_command("add .")
+            run_git_command('commit -m "Disable original workflows"')
+
         # Create private repository
         typer.echo(f"  ✓ Creating private repository: {org or username}/{target_name}")
         mirror_url = create_private_repo(target_name, org=org)
@@ -138,10 +143,8 @@ def private_mirror_operation(
 
             # Commit and push workflow
             run_git_command("add .github/workflows/mirror-sync.yml")
-            if workflows_disabled:
-                commit_msg = "Disable original workflows and add mirror sync"
-            else:
-                commit_msg = "Add automatic mirror sync workflow"
+            # workflows_disabled already committed separately, so always use simple message
+            commit_msg = "Add automatic mirror sync workflow"
             run_git_command(f'commit -m "{commit_msg}"')
             run_git_command("push origin main")
 
