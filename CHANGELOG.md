@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v1.1.1 (2025-06-28)
+
+### Bug Fixes
+
+- Replace hardcoded 'main' branch with dynamic branch detection
+  ([#4](https://github.com/cagojeiger/cli-git/pull/4),
+  [`0950b5b`](https://github.com/cagojeiger/cli-git/commit/0950b5b397e8cdc87394066612d614d6a1b34916))
+
+
 ## v1.1.0 (2025-06-28)
 
 ### Bug Fixes
