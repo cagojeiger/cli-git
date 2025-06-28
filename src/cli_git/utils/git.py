@@ -33,6 +33,53 @@ def run_git_command(cmd: str, cwd: Optional[Path] = None) -> str:
     return result.stdout.strip()
 
 
+def get_default_branch(cwd: Optional[Path] = None) -> str:
+    """Get the default branch of the current repository.
+
+    Args:
+        cwd: Working directory for the command
+
+    Returns:
+        Name of the default branch
+
+    Raises:
+        subprocess.CalledProcessError: If unable to determine default branch
+    """
+    try:
+        # Try to get the default branch from upstream HEAD
+        result = run_git_command("symbolic-ref refs/remotes/upstream/HEAD", cwd=cwd)
+        # Extract branch name from refs/remotes/upstream/branch_name
+        return result.split("/")[-1]
+    except subprocess.CalledProcessError:
+        pass
+
+    try:
+        # Fallback: get the first remote branch (usually the default)
+        result = run_git_command("branch -r", cwd=cwd)
+        lines = result.strip().split("\n")
+        for line in lines:
+            line = line.strip()
+            if line.startswith("upstream/") and "HEAD" not in line:
+                return line.split("/", 1)[1]
+        # If no upstream branches, try origin
+        for line in lines:
+            line = line.strip()
+            if line.startswith("origin/") and "HEAD" not in line:
+                return line.split("/", 1)[1]
+    except subprocess.CalledProcessError:
+        pass
+
+    # Final fallback to common default branch names
+    for branch in ["main", "master", "develop"]:
+        try:
+            run_git_command(f"show-ref --verify --quiet refs/heads/{branch}", cwd=cwd)
+            return branch
+        except subprocess.CalledProcessError:
+            continue
+
+    raise subprocess.CalledProcessError(1, "git", "Unable to determine default branch")
+
+
 def extract_repo_info(url: str) -> Tuple[str, str]:
     """Extract owner and repository name from a git URL.
 

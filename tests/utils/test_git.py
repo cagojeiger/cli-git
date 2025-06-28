@@ -8,6 +8,7 @@ import pytest
 
 from cli_git.utils.git import (
     extract_repo_info,
+    get_default_branch,
     run_git_command,
 )
 
@@ -109,3 +110,119 @@ class TestGitUtils:
         expected_cmd = ["git", "commit", "-m", "Disable original workflows and add mirror sync"]
         mock_run.assert_called_once_with(expected_cmd, capture_output=True, text=True, cwd=None)
         assert result == "[main abcd123] Complex message"
+
+    @patch("cli_git.utils.git.run_git_command")
+    def test_get_default_branch_from_upstream_head(self, mock_run_git):
+        """Test getting default branch from upstream HEAD."""
+        mock_run_git.return_value = "refs/remotes/upstream/main"
+
+        result = get_default_branch()
+
+        mock_run_git.assert_called_with("symbolic-ref refs/remotes/upstream/HEAD", cwd=None)
+        assert result == "main"
+
+    @patch("cli_git.utils.git.run_git_command")
+    def test_get_default_branch_from_upstream_head_master(self, mock_run_git):
+        """Test getting default branch from upstream HEAD (master)."""
+        mock_run_git.return_value = "refs/remotes/upstream/master"
+
+        result = get_default_branch()
+
+        assert result == "master"
+
+    @patch("cli_git.utils.git.run_git_command")
+    def test_get_default_branch_fallback_to_remote_branches(self, mock_run_git):
+        """Test fallback to parsing remote branches."""
+        # First call fails (no upstream HEAD)
+        # Second call returns remote branches
+        mock_run_git.side_effect = [
+            subprocess.CalledProcessError(1, "git"),
+            "  upstream/master\n  upstream/develop\n  origin/main",
+        ]
+
+        result = get_default_branch()
+
+        assert result == "master"
+
+    @patch("cli_git.utils.git.run_git_command")
+    def test_get_default_branch_fallback_to_origin(self, mock_run_git):
+        """Test fallback to origin branches when no upstream."""
+        # First call fails (no upstream HEAD)
+        # Second call returns only origin branches
+        mock_run_git.side_effect = [
+            subprocess.CalledProcessError(1, "git"),
+            "  origin/main\n  origin/develop",
+        ]
+
+        result = get_default_branch()
+
+        assert result == "main"
+
+    @patch("cli_git.utils.git.run_git_command")
+    def test_get_default_branch_fallback_to_local_branches(self, mock_run_git):
+        """Test final fallback to local branches."""
+
+        # First call fails (no upstream HEAD)
+        # Second call fails (no remote branches)
+        # Third call succeeds for main branch check
+        def side_effect_func(cmd, cwd=None):
+            if "symbolic-ref" in cmd:
+                raise subprocess.CalledProcessError(1, "git")
+            elif "branch -r" in cmd:
+                raise subprocess.CalledProcessError(1, "git")
+            elif "show-ref" in cmd and "main" in cmd:
+                return ""  # show-ref for main succeeds
+            else:
+                raise subprocess.CalledProcessError(1, "git")
+
+        mock_run_git.side_effect = side_effect_func
+
+        result = get_default_branch()
+
+        assert result == "main"
+
+    @patch("cli_git.utils.git.run_git_command")
+    def test_get_default_branch_fallback_to_master(self, mock_run_git):
+        """Test fallback to master when main doesn't exist."""
+
+        # First call fails (no upstream HEAD)
+        # Second call fails (no remote branches)
+        # Third call fails (no main branch)
+        # Fourth call succeeds (master exists)
+        def side_effect_func(cmd, cwd=None):
+            if "symbolic-ref" in cmd:
+                raise subprocess.CalledProcessError(1, "git")
+            elif "branch -r" in cmd:
+                raise subprocess.CalledProcessError(1, "git")
+            elif "show-ref" in cmd and "main" in cmd:
+                raise subprocess.CalledProcessError(1, "git")  # main check fails
+            elif "show-ref" in cmd and "master" in cmd:
+                return ""  # show-ref for master succeeds
+            else:
+                raise subprocess.CalledProcessError(1, "git")
+
+        mock_run_git.side_effect = side_effect_func
+
+        result = get_default_branch()
+
+        assert result == "master"
+
+    @patch("cli_git.utils.git.run_git_command")
+    def test_get_default_branch_all_methods_fail(self, mock_run_git):
+        """Test when all detection methods fail."""
+        # All calls fail
+        mock_run_git.side_effect = subprocess.CalledProcessError(1, "git")
+
+        with pytest.raises(subprocess.CalledProcessError):
+            get_default_branch()
+
+    @patch("cli_git.utils.git.run_git_command")
+    def test_get_default_branch_with_cwd(self, mock_run_git):
+        """Test get_default_branch with custom working directory."""
+        mock_run_git.return_value = "refs/remotes/upstream/develop"
+        cwd = Path("/test/repo")
+
+        result = get_default_branch(cwd=cwd)
+
+        mock_run_git.assert_called_with("symbolic-ref refs/remotes/upstream/HEAD", cwd=cwd)
+        assert result == "develop"

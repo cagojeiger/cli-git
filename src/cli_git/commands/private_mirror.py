@@ -1,6 +1,7 @@
 """Create a private mirror of a public repository."""
 
 import os
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -18,7 +19,7 @@ from cli_git.utils.gh import (
     create_private_repo,
     get_current_username,
 )
-from cli_git.utils.git import extract_repo_info, run_git_command
+from cli_git.utils.git import extract_repo_info, get_default_branch, run_git_command
 from cli_git.utils.validators import (
     ValidationError,
     validate_cron_schedule,
@@ -146,7 +147,22 @@ def private_mirror_operation(
             # workflows_disabled already committed separately, so always use simple message
             commit_msg = "Add automatic mirror sync workflow"
             run_git_command(f'commit -m "{commit_msg}"')
-            run_git_command("push origin main")
+
+            # Get the default branch and push to it
+            try:
+                default_branch = get_default_branch(repo_path)
+                run_git_command(f"push origin {default_branch}")
+            except subprocess.CalledProcessError:
+                # Fallback to common branch names if detection fails
+                for branch in ["main", "master"]:
+                    try:
+                        run_git_command(f"push origin {branch}")
+                        break
+                    except subprocess.CalledProcessError:
+                        continue
+                else:
+                    # If all fails, just push current branch
+                    run_git_command("push origin HEAD")
 
             # Add secrets
             repo_full_name = f"{org or username}/{target_name}"
