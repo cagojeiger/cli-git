@@ -54,7 +54,7 @@ def version_callback(value: bool) -> None:
 app = typer.Typer(
     name="cli-git",
     help="A modern Python CLI tool for Git operations",
-    no_args_is_help=False,
+    no_args_is_help=True,
 )
 
 
