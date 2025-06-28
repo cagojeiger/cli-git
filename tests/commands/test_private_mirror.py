@@ -200,3 +200,129 @@ class TestPrivateMirrorCommand:
 
             # Verify workflow generation was not called
             mock_generate_workflow.assert_not_called()
+
+    @patch("cli_git.commands.private_mirror.check_gh_auth")
+    @patch("cli_git.commands.private_mirror.get_current_username")
+    @patch("cli_git.commands.private_mirror.ConfigManager")
+    @patch("cli_git.commands.private_mirror.get_default_branch")
+    @patch("cli_git.commands.private_mirror.run_git_command")
+    @patch("cli_git.commands.private_mirror.create_private_repo")
+    @patch("cli_git.commands.private_mirror.add_repo_secret")
+    @patch("cli_git.commands.private_mirror.generate_sync_workflow")
+    @patch("cli_git.commands.private_mirror.disable_original_workflows")
+    @patch("os.chdir")
+    @patch("tempfile.TemporaryDirectory")
+    def test_private_mirror_with_master_branch(
+        self,
+        mock_temp_dir,
+        mock_chdir,
+        mock_disable_workflows,
+        mock_generate_workflow,
+        mock_add_secret,
+        mock_create_repo,
+        mock_run_git,
+        mock_get_default_branch,
+        mock_config_manager,
+        mock_get_username,
+        mock_check_auth,
+        runner,
+    ):
+        """Test private mirror operation with master branch."""
+        # Setup mocks
+        mock_check_auth.return_value = True
+        mock_get_username.return_value = "testuser"
+        mock_get_default_branch.return_value = "master"
+        mock_create_repo.return_value = "https://github.com/testuser/mirror-repo"
+        mock_disable_workflows.return_value = False
+        mock_generate_workflow.return_value = "workflow content"
+
+        # Mock temp directory
+        mock_temp_dir.return_value.__enter__.return_value = "/tmp/test"
+
+        mock_manager = MagicMock()
+        mock_config_manager.return_value = mock_manager
+        mock_manager.get_config.return_value = {
+            "github": {"username": "testuser", "default_org": "", "slack_webhook_url": ""},
+            "preferences": {"default_prefix": "mirror-"},
+        }
+
+        result = runner.invoke(app, ["private-mirror", "https://github.com/owner/repo"])
+
+        # Verify success
+        assert result.exit_code == 0
+
+        # Verify that git push was called with master branch
+        push_calls = [
+            call for call in mock_run_git.call_args_list if "push origin master" in str(call)
+        ]
+        assert (
+            len(push_calls) > 0
+        ), f"Expected 'push origin master' call, got: {mock_run_git.call_args_list}"
+
+    @patch("cli_git.commands.private_mirror.check_gh_auth")
+    @patch("cli_git.commands.private_mirror.get_current_username")
+    @patch("cli_git.commands.private_mirror.ConfigManager")
+    @patch("cli_git.commands.private_mirror.get_default_branch")
+    @patch("cli_git.commands.private_mirror.run_git_command")
+    @patch("cli_git.commands.private_mirror.create_private_repo")
+    @patch("cli_git.commands.private_mirror.add_repo_secret")
+    @patch("cli_git.commands.private_mirror.generate_sync_workflow")
+    @patch("cli_git.commands.private_mirror.disable_original_workflows")
+    @patch("os.chdir")
+    @patch("tempfile.TemporaryDirectory")
+    def test_private_mirror_fallback_push_strategy(
+        self,
+        mock_temp_dir,
+        mock_chdir,
+        mock_disable_workflows,
+        mock_generate_workflow,
+        mock_add_secret,
+        mock_create_repo,
+        mock_run_git,
+        mock_get_default_branch,
+        mock_config_manager,
+        mock_get_username,
+        mock_check_auth,
+        runner,
+    ):
+        """Test private mirror fallback push strategy when get_default_branch fails."""
+        # Setup mocks
+        mock_check_auth.return_value = True
+        mock_get_username.return_value = "testuser"
+        mock_create_repo.return_value = "https://github.com/testuser/mirror-repo"
+        mock_disable_workflows.return_value = False
+        mock_generate_workflow.return_value = "workflow content"
+
+        # Mock temp directory
+        mock_temp_dir.return_value.__enter__.return_value = "/tmp/test"
+
+        # Mock get_default_branch to fail, then git commands
+        import subprocess
+
+        mock_get_default_branch.side_effect = subprocess.CalledProcessError(1, "git")
+
+        # Mock git commands - first push main succeeds
+        def git_side_effect(cmd, cwd=None):
+            if "push origin main" in cmd:
+                return "pushed to main"
+            return "git output"
+
+        mock_run_git.side_effect = git_side_effect
+
+        mock_manager = MagicMock()
+        mock_config_manager.return_value = mock_manager
+        mock_manager.get_config.return_value = {
+            "github": {"username": "testuser", "default_org": "", "slack_webhook_url": ""},
+            "preferences": {"default_prefix": "mirror-"},
+        }
+
+        result = runner.invoke(app, ["private-mirror", "https://github.com/owner/repo"])
+
+        # Verify success
+        assert result.exit_code == 0
+
+        # Verify fallback push to main was attempted
+        push_calls = [
+            call for call in mock_run_git.call_args_list if "push origin main" in str(call)
+        ]
+        assert len(push_calls) > 0, "Expected fallback 'push origin main' call"
