@@ -10,8 +10,32 @@ from cli_git.utils.gh import (
     check_gh_auth,
     get_current_username,
     get_user_organizations,
+    run_gh_auth_login,
 )
 from cli_git.utils.validators import ValidationError, validate_prefix, validate_slack_webhook_url
+
+
+def mask_webhook_url(url: str) -> str:
+    """Mask Slack webhook URL for display.
+
+    Args:
+        url: Slack webhook URL to mask
+
+    Returns:
+        Masked URL for display
+    """
+    if not url:
+        return ""
+
+    # https://hooks.slack.com/services/XXXXXXXXX/XXXXXXXXX/XXXXXXXXXXXXXXXXXXXXXXXX
+    # -> https://hooks.slack.com/services/XXX.../XXX.../XXX...
+    parts = url.split("/")
+    if len(parts) >= 7 and "hooks.slack.com" in url:
+        # Mask the tokens (parts[4] = T..., parts[5] = B..., parts[6] = XXX...)
+        parts[4] = parts[4][:3] + "..." if len(parts[4]) > 3 else parts[4]
+        parts[5] = parts[5][:3] + "..." if len(parts[5]) > 3 else parts[5]
+        parts[6] = parts[6][:3] + "..." if len(parts[6]) > 3 else parts[6]
+    return "/".join(parts)
 
 
 def init_command(
@@ -20,9 +44,17 @@ def init_command(
     """Initialize cli-git configuration with GitHub account information."""
     # Check gh CLI authentication first
     if not check_gh_auth():
-        typer.echo("❌ GitHub CLI is not authenticated")
-        typer.echo("   Please run: gh auth login")
-        raise typer.Exit(1)
+        typer.echo("🔐 GitHub CLI is not authenticated")
+        if typer.confirm("Would you like to login now?", default=True):
+            typer.echo("📝 Starting GitHub authentication...")
+            if run_gh_auth_login():
+                typer.echo("✅ GitHub authentication successful!")
+            else:
+                typer.echo("❌ GitHub login failed")
+                raise typer.Exit(1)
+        else:
+            typer.echo("   Please run: gh auth login")
+            raise typer.Exit(1)
 
     # Get current GitHub username
     try:
@@ -79,9 +111,7 @@ def init_command(
     typer.echo("\n🔔 Slack Integration (optional)")
     typer.echo("   Enter webhook URL to receive sync failure notifications")
     while True:
-        slack_webhook_url = typer.prompt(
-            "Slack webhook URL (optional)", default="", hide_input=True
-        )
+        slack_webhook_url = typer.prompt("Slack webhook URL (optional)", default="")
         try:
             validate_slack_webhook_url(slack_webhook_url)
             break
@@ -116,7 +146,7 @@ def init_command(
     if default_org:
         typer.echo(f"   Default organization: {default_org}")
     if slack_webhook_url:
-        typer.echo("   Slack webhook: Configured ✓")
+        typer.echo(f"   Slack webhook: {mask_webhook_url(slack_webhook_url)}")
     typer.echo(f"   Mirror prefix: {default_prefix}")
     typer.echo()
     typer.echo("Next steps:")

@@ -11,6 +11,8 @@ from cli_git.utils.gh import (
     check_gh_auth,
     create_private_repo,
     get_current_username,
+    get_user_organizations,
+    run_gh_auth_login,
 )
 
 
@@ -129,3 +131,60 @@ class TestGhUtils:
 
         with pytest.raises(GitHubError, match="Failed to set secret"):
             add_repo_secret("testuser/test-repo", "MY_SECRET", "value")
+
+    @patch("subprocess.run")
+    def test_run_gh_auth_login_success(self, mock_run):
+        """Test successful gh auth login."""
+        mock_run.return_value = MagicMock(returncode=0)
+
+        result = run_gh_auth_login()
+        assert result is True
+        mock_run.assert_called_once_with(["gh", "auth", "login"], check=False)
+
+    @patch("subprocess.run")
+    def test_run_gh_auth_login_failure(self, mock_run):
+        """Test failed gh auth login."""
+        mock_run.return_value = MagicMock(returncode=1)
+
+        result = run_gh_auth_login()
+        assert result is False
+
+    @patch("subprocess.run")
+    def test_run_gh_auth_login_file_not_found(self, mock_run):
+        """Test gh auth login when gh CLI is not installed."""
+        mock_run.side_effect = FileNotFoundError()
+
+        result = run_gh_auth_login()
+        assert result is False
+
+    @patch("subprocess.run")
+    def test_get_user_organizations_success(self, mock_run):
+        """Test getting user organizations."""
+        mock_run.return_value = MagicMock(returncode=0, stdout="org1\norg2\n")
+
+        orgs = get_user_organizations()
+        assert orgs == ["org1", "org2"]
+        mock_run.assert_called_once_with(
+            ["gh", "api", "user/orgs", "-q", ".[].login"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+
+    @patch("subprocess.run")
+    def test_get_user_organizations_empty(self, mock_run):
+        """Test getting empty organizations list."""
+        mock_run.return_value = MagicMock(returncode=0, stdout="")
+
+        orgs = get_user_organizations()
+        assert orgs == []
+
+    @patch("subprocess.run")
+    def test_get_user_organizations_failure(self, mock_run):
+        """Test handling error when getting organizations."""
+        mock_run.side_effect = subprocess.CalledProcessError(
+            1, ["gh", "api", "user/orgs"], stderr="Not authenticated"
+        )
+
+        with pytest.raises(GitHubError, match="Failed to get organizations"):
+            get_user_organizations()

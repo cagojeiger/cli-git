@@ -88,7 +88,9 @@ class TestInitValidation:
 
         assert result.exit_code == 0
         assert "✅ Configuration initialized successfully!" in result.stdout
-        assert "Slack webhook: Configured ✓" in result.stdout
+        assert (
+            "Slack webhook: https://hooks.slack.com/services/T00.../B00.../XXX..." in result.stdout
+        )
 
         # Verify configuration was saved with the webhook
         config_updates = mock_manager.update_config.call_args[0][0]

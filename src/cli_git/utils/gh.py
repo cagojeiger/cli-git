@@ -23,6 +23,19 @@ def check_gh_auth() -> bool:
         return False
 
 
+def run_gh_auth_login() -> bool:
+    """Run gh auth login interactively.
+
+    Returns:
+        True if login succeeded, False otherwise
+    """
+    try:
+        result = subprocess.run(["gh", "auth", "login"], check=False)
+        return result.returncode == 0
+    except FileNotFoundError:
+        return False
+
+
 def get_current_username() -> str:
     """Get current GitHub username using gh CLI.
 

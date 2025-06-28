@@ -6,6 +6,7 @@ import pytest
 from typer.testing import CliRunner
 
 from cli_git.cli import app
+from cli_git.commands.init import mask_webhook_url
 
 
 class TestInitCommand:
@@ -33,8 +34,8 @@ class TestInitCommand:
             "preferences": {"default_schedule": "0 0 * * *"},
         }
 
-        # Run command
-        result = runner.invoke(app, ["init"])
+        # Run command with input for prompts (webhook url, prefix)
+        result = runner.invoke(app, ["init"], input="\nmirror-\n")
 
         # Verify
         assert result.exit_code == 0
@@ -47,14 +48,16 @@ class TestInitCommand:
         assert config_updates["github"]["username"] == "testuser"
 
     @patch("cli_git.commands.init.check_gh_auth")
-    def test_init_no_gh_auth(self, mock_check_auth, runner):
-        """Test init when gh is not authenticated."""
+    @patch("cli_git.commands.init.typer.confirm")
+    def test_init_no_gh_auth(self, mock_confirm, mock_check_auth, runner):
+        """Test init when gh is not authenticated and user declines login."""
         mock_check_auth.return_value = False
+        mock_confirm.return_value = False  # User declines to login
 
         result = runner.invoke(app, ["init"])
 
         assert result.exit_code == 1
-        assert "❌ GitHub CLI is not authenticated" in result.stdout
+        assert "🔐 GitHub CLI is not authenticated" in result.stdout
         assert "Please run: gh auth login" in result.stdout
 
     @patch("cli_git.commands.init.check_gh_auth")
@@ -151,3 +154,68 @@ class TestInitCommand:
         mock_manager.update_config.assert_called_once()
         config_updates = mock_manager.update_config.call_args[0][0]
         assert config_updates["github"]["username"] == "newuser"
+
+    @patch("cli_git.commands.init.check_gh_auth")
+    @patch("cli_git.commands.init.run_gh_auth_login")
+    @patch("cli_git.commands.init.typer.confirm")
+    def test_init_prompts_for_login(self, mock_confirm, mock_login, mock_check_auth, runner):
+        """Test init prompts for GitHub login when not authenticated."""
+        # Setup mocks
+        mock_check_auth.return_value = False
+        mock_confirm.return_value = True
+        mock_login.return_value = True
+
+        # Need to mock the subsequent auth check and username after login
+        with patch("cli_git.commands.init.get_current_username") as mock_username:
+            with patch("cli_git.commands.init.ConfigManager") as mock_config_manager:
+                mock_username.return_value = "testuser"
+                mock_manager = MagicMock()
+                mock_config_manager.return_value = mock_manager
+                mock_manager.get_config.return_value = {
+                    "github": {"username": "", "default_org": ""},
+                    "preferences": {"default_schedule": "0 0 * * *"},
+                }
+
+                result = runner.invoke(app, ["init"], input="\nmirror-\n")
+
+        assert result.exit_code == 0
+        assert "🔐 GitHub CLI is not authenticated" in result.stdout
+        assert "📝 Starting GitHub authentication..." in result.stdout
+        assert "✅ GitHub authentication successful!" in result.stdout
+
+        # Verify login was called
+        mock_login.assert_called_once()
+
+    @patch("cli_git.commands.init.check_gh_auth")
+    @patch("cli_git.commands.init.typer.confirm")
+    def test_init_exits_when_login_declined(self, mock_confirm, mock_check_auth, runner):
+        """Test init exits when user declines to login."""
+        # Setup mocks
+        mock_check_auth.return_value = False
+        mock_confirm.return_value = False
+
+        result = runner.invoke(app, ["init"])
+
+        assert result.exit_code == 1
+        assert "🔐 GitHub CLI is not authenticated" in result.stdout
+        assert "Please run: gh auth login" in result.stdout
+
+    def test_mask_webhook_url(self):
+        """Test masking Slack webhook URLs."""
+        # Test with valid webhook URL
+        url = "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"
+        masked = mask_webhook_url(url)
+        assert masked == "https://hooks.slack.com/services/T00.../B00.../XXX..."
+
+        # Test with empty URL
+        assert mask_webhook_url("") == ""
+
+        # Test with non-Slack URL
+        url = "https://example.com/webhook"
+        masked = mask_webhook_url(url)
+        assert masked == url  # Should return as-is
+
+        # Test with incomplete Slack URL
+        url = "https://hooks.slack.com/services/T00000000"
+        masked = mask_webhook_url(url)
+        assert masked == url  # Should return as-is
