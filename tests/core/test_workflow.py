@@ -11,7 +11,9 @@ class TestWorkflow:
     def test_generate_sync_workflow_basic(self):
         """Test basic workflow generation."""
         workflow_yaml = generate_sync_workflow(
-            upstream_url="https://github.com/owner/repo", schedule="0 0 * * *"
+            upstream_url="https://github.com/owner/repo",
+            schedule="0 0 * * *",
+            upstream_default_branch="main",
         )
 
         # Parse YAML
@@ -46,11 +48,17 @@ class TestWorkflow:
         assert sync_step["name"] == "Sync with rebase"
         assert "UPSTREAM_URL" in sync_step["env"]
         assert sync_step["env"]["UPSTREAM_URL"] == "${{ secrets.UPSTREAM_URL }}"
+        assert "UPSTREAM_DEFAULT_BRANCH" in sync_step["env"]
+        assert (
+            sync_step["env"]["UPSTREAM_DEFAULT_BRANCH"] == "${{ secrets.UPSTREAM_DEFAULT_BRANCH }}"
+        )
 
     def test_generate_sync_workflow_custom_schedule(self):
         """Test workflow generation with custom schedule."""
         workflow_yaml = generate_sync_workflow(
-            upstream_url="https://github.com/owner/repo", schedule="0 */6 * * *"  # Every 6 hours
+            upstream_url="https://github.com/owner/repo",
+            schedule="0 */6 * * *",  # Every 6 hours
+            upstream_default_branch="main",
         )
 
         workflow = yaml.safe_load(workflow_yaml)
@@ -59,7 +67,9 @@ class TestWorkflow:
     def test_sync_script_content(self):
         """Test that sync script contains correct commands."""
         workflow_yaml = generate_sync_workflow(
-            upstream_url="https://github.com/owner/repo", schedule="0 0 * * *"
+            upstream_url="https://github.com/owner/repo",
+            schedule="0 0 * * *",
+            upstream_default_branch="main",
         )
 
         # Check for important commands in the script
@@ -67,14 +77,16 @@ class TestWorkflow:
         assert "git config user.email" in workflow_yaml
         assert "git remote add upstream $UPSTREAM_URL" in workflow_yaml
         assert "git fetch upstream" in workflow_yaml
-        assert "git rebase upstream/main" in workflow_yaml
-        assert "git push origin main --force-with-lease" in workflow_yaml
+        assert "git rebase upstream/$DEFAULT_BRANCH" in workflow_yaml
+        assert "git push origin $CURRENT_BRANCH --force-with-lease" in workflow_yaml
         assert "git push origin --tags" in workflow_yaml
 
     def test_conflict_handling(self):
         """Test that conflict handling logic is present."""
         workflow_yaml = generate_sync_workflow(
-            upstream_url="https://github.com/owner/repo", schedule="0 0 * * *"
+            upstream_url="https://github.com/owner/repo",
+            schedule="0 0 * * *",
+            upstream_default_branch="main",
         )
 
         # Check for conflict handling

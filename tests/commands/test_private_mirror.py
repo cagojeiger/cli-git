@@ -207,18 +207,20 @@ class TestPrivateMirrorCommand:
     @patch("cli_git.commands.private_mirror.get_default_branch")
     @patch("cli_git.commands.private_mirror.run_git_command")
     @patch("cli_git.commands.private_mirror.create_private_repo")
+    @patch("cli_git.commands.private_mirror.get_upstream_default_branch")
     @patch("cli_git.commands.private_mirror.add_repo_secret")
     @patch("cli_git.commands.private_mirror.generate_sync_workflow")
-    @patch("cli_git.commands.private_mirror.disable_original_workflows")
+    @patch("cli_git.commands.private_mirror.clean_github_directory")
     @patch("os.chdir")
     @patch("tempfile.TemporaryDirectory")
     def test_private_mirror_with_master_branch(
         self,
         mock_temp_dir,
         mock_chdir,
-        mock_disable_workflows,
+        mock_clean_github,
         mock_generate_workflow,
         mock_add_secret,
+        mock_get_upstream_default_branch,
         mock_create_repo,
         mock_run_git,
         mock_get_default_branch,
@@ -233,8 +235,9 @@ class TestPrivateMirrorCommand:
         mock_get_username.return_value = "testuser"
         mock_get_default_branch.return_value = "master"
         mock_create_repo.return_value = "https://github.com/testuser/mirror-repo"
-        mock_disable_workflows.return_value = False
+        mock_clean_github.return_value = True
         mock_generate_workflow.return_value = "workflow content"
+        mock_get_upstream_default_branch.return_value = "master"
 
         # Mock temp directory
         mock_temp_dir.return_value.__enter__.return_value = "/tmp/test"
@@ -265,18 +268,20 @@ class TestPrivateMirrorCommand:
     @patch("cli_git.commands.private_mirror.get_default_branch")
     @patch("cli_git.commands.private_mirror.run_git_command")
     @patch("cli_git.commands.private_mirror.create_private_repo")
+    @patch("cli_git.commands.private_mirror.get_upstream_default_branch")
     @patch("cli_git.commands.private_mirror.add_repo_secret")
     @patch("cli_git.commands.private_mirror.generate_sync_workflow")
-    @patch("cli_git.commands.private_mirror.disable_original_workflows")
+    @patch("cli_git.commands.private_mirror.clean_github_directory")
     @patch("os.chdir")
     @patch("tempfile.TemporaryDirectory")
     def test_private_mirror_fallback_push_strategy(
         self,
         mock_temp_dir,
         mock_chdir,
-        mock_disable_workflows,
+        mock_clean_github,
         mock_generate_workflow,
         mock_add_secret,
+        mock_get_upstream_default_branch,
         mock_create_repo,
         mock_run_git,
         mock_get_default_branch,
@@ -290,8 +295,9 @@ class TestPrivateMirrorCommand:
         mock_check_auth.return_value = True
         mock_get_username.return_value = "testuser"
         mock_create_repo.return_value = "https://github.com/testuser/mirror-repo"
-        mock_disable_workflows.return_value = False
+        mock_clean_github.return_value = True
         mock_generate_workflow.return_value = "workflow content"
+        mock_get_upstream_default_branch.return_value = "main"
 
         # Mock temp directory
         mock_temp_dir.return_value.__enter__.return_value = "/tmp/test"

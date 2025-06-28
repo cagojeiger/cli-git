@@ -1,12 +1,13 @@
 """GitHub Actions workflow generation for mirror synchronization."""
 
 
-def generate_sync_workflow(upstream_url: str, schedule: str) -> str:
+def generate_sync_workflow(upstream_url: str, schedule: str, upstream_default_branch: str) -> str:
     """Generate GitHub Actions workflow for mirror synchronization.
 
     Args:
         upstream_url: URL of the upstream repository
         schedule: Cron schedule for synchronization
+        upstream_default_branch: Default branch of the upstream repository
 
     Returns:
         YAML content for the workflow file
@@ -44,6 +45,7 @@ jobs:
         id: sync
         env:
           UPSTREAM_URL: ${{{{ secrets.UPSTREAM_URL }}}}
+          UPSTREAM_DEFAULT_BRANCH: ${{{{ secrets.UPSTREAM_DEFAULT_BRANCH }}}}
           GH_TOKEN: ${{{{ secrets.GITHUB_TOKEN }}}}
         run: |
           echo "Adding upstream remote..."
@@ -52,10 +54,31 @@ jobs:
           echo "Fetching from upstream..."
           git fetch upstream
 
+          # Get upstream default branch dynamically or use secret
+          if [ -n "$UPSTREAM_DEFAULT_BRANCH" ]; then
+            DEFAULT_BRANCH="$UPSTREAM_DEFAULT_BRANCH"
+          else
+            DEFAULT_BRANCH=$(git ls-remote --symref upstream HEAD | awk '/^ref:/ {{sub(/refs\\/heads\\//, "", $2); print $2}}')
+          fi
+          echo "Using upstream branch: $DEFAULT_BRANCH"
+
+          # Get current branch
+          CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+
+          # Save current .github directory
+          cp -r .github /tmp/github-backup || true
+
           echo "Attempting rebase..."
-          if git rebase upstream/main; then
-            echo "✅ Rebase successful, pushing to main"
-            git push origin main --force-with-lease
+          if git rebase upstream/$DEFAULT_BRANCH; then
+            echo "✅ Rebase successful"
+
+            # Restore our .github directory
+            rm -rf .github
+            cp -r /tmp/github-backup .github || true
+            git add .github
+            git commit -m "Restore .github directory" || true
+
+            git push origin $CURRENT_BRANCH --force-with-lease
             echo "has_conflicts=false" >> $GITHUB_OUTPUT
           else
             echo "❌ Rebase conflicts detected"
@@ -76,8 +99,15 @@ jobs:
           # Add upstream as remote and fetch
           git fetch upstream
 
+          # Get upstream default branch
+          if [ -n "${{{{ secrets.UPSTREAM_DEFAULT_BRANCH }}}}" ]; then
+            DEFAULT_BRANCH="${{{{ secrets.UPSTREAM_DEFAULT_BRANCH }}}}"
+          else
+            DEFAULT_BRANCH=$(git ls-remote --symref upstream HEAD | awk '/^ref:/ {{sub(/refs\\/heads\\//, "", $2); print $2}}')
+          fi
+
           # Try merge instead of rebase for conflict resolution
-          git merge upstream/main --no-edit || true
+          git merge upstream/$DEFAULT_BRANCH --no-edit || true
 
           # Commit the conflict state
           git add -A
