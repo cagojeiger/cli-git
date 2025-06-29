@@ -158,7 +158,7 @@ display_version = partial(display_message, create_version_message)
 
 ### GitHub Actions Workflows
 1. **test.yml** - Runs on PR/push:
-   - Two separate jobs: pre-commit (Ubuntu only) and test (Ubuntu/macOS)
+   - Two separate jobs: pre-commit (Ubuntu only) and test (Ubuntu only)
    - Python 3.11 and 3.12
    - Pre-commit hooks run first, then tests
    - Test coverage reporting with Codecov
