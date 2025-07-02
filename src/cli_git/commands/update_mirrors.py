@@ -6,6 +6,7 @@ from typing import Annotated, Dict, List, Optional
 
 import typer
 
+from cli_git.completion.completers import complete_repository
 from cli_git.core.workflow import generate_sync_workflow
 from cli_git.utils.config import ConfigManager
 from cli_git.utils.gh import (
@@ -182,36 +183,113 @@ def select_mirrors_interactive(mirrors: List[Dict[str, str]]) -> List[Dict[str, 
     if not mirrors:
         return []
 
-    typer.echo("\n📋 Available mirrors:")
+    typer.echo("\n📋 Found mirror repositories:")
+    typer.echo("=" * 60)
+
+    # Display mirrors with better formatting
     for i, mirror in enumerate(mirrors, 1):
-        repo_name = (
-            extract_repo_info(mirror["mirror"])[1]
-            if "/" in mirror["mirror"]
-            else mirror.get("name", "unknown")
-        )
-        upstream = mirror.get("upstream", "Unknown")
-        typer.echo(f"{i}. {repo_name}")
-        if upstream:
-            typer.echo(f"   Upstream: {upstream}")
+        # Extract repository name
+        mirror_name = mirror.get("name", "")
+        if not mirror_name:
+            if "/" in mirror["mirror"]:
+                try:
+                    _, repo_part = extract_repo_info(mirror["mirror"])
+                    owner = mirror["mirror"].split("/")[-2]
+                    mirror_name = f"{owner}/{repo_part}"
+                except Exception:
+                    mirror_name = "Unknown"
+            else:
+                mirror_name = "Unknown"
 
-    typer.echo("\nEnter numbers separated by commas (e.g., 1,3,5) or 'all':")
-    selection = typer.prompt("Selection", default="all")
+        # Extract upstream info
+        upstream = mirror.get("upstream", "")
+        if upstream and "github.com/" in upstream:
+            try:
+                parts = upstream.split("github.com/")[-1].split("/")
+                if len(parts) >= 2:
+                    upstream_display = f"{parts[0]}/{parts[1]}"
+                else:
+                    upstream_display = upstream
+            except Exception:
+                upstream_display = upstream
+        else:
+            upstream_display = upstream or "Unknown"
 
-    if selection.lower() == "all":
+        # Display with formatting
+        typer.echo(f"\n  [{i}] 🔄 {mirror_name}")
+        typer.echo(f"      └─ Mirrors: {upstream_display}")
+
+    typer.echo("\n" + "=" * 60)
+    typer.echo("\n💡 Options:")
+    typer.echo("  • Enter numbers to select specific mirrors (e.g., 1,3,5)")
+    typer.echo("  • Type 'all' to update all mirrors")
+    typer.echo("  • Press Enter to update all (default)")
+    typer.echo("  • Type 'none' or 'q' to cancel")
+
+    selection = typer.prompt("\n📝 Your selection", default="all")
+
+    # Handle different input cases
+    if selection.lower() in ["all", ""]:
+        typer.echo(f"\n✅ Selected all {len(mirrors)} mirrors")
         return mirrors
 
+    if selection.lower() in ["none", "q", "quit", "exit"]:
+        typer.echo("\n❌ Update cancelled")
+        raise typer.Exit(0)
+
+    # Parse number selection
     try:
-        indices = [int(x.strip()) - 1 for x in selection.split(",")]
-        return [mirrors[i] for i in indices if 0 <= i < len(mirrors)]
-    except (ValueError, IndexError):
-        typer.echo("❌ Invalid selection")
+        # Handle ranges (e.g., "1-3" becomes "1,2,3")
+        expanded_selection = []
+        for part in selection.split(","):
+            part = part.strip()
+            if "-" in part:
+                try:
+                    start, end = part.split("-")
+                    start, end = int(start.strip()), int(end.strip())
+                    expanded_selection.extend(range(start, end + 1))
+                except Exception:
+                    typer.echo(f"⚠️  Invalid range: {part}")
+                    raise typer.Exit(1)
+            else:
+                expanded_selection.append(int(part))
+
+        # Convert to 0-based indices and validate
+        indices = [i - 1 for i in expanded_selection]
+        selected = []
+        invalid = []
+
+        for idx in indices:
+            if 0 <= idx < len(mirrors):
+                selected.append(mirrors[idx])
+            else:
+                invalid.append(idx + 1)
+
+        if invalid:
+            typer.echo(f"\n⚠️  Invalid numbers ignored: {', '.join(map(str, invalid))}")
+
+        if selected:
+            typer.echo(f"\n✅ Selected {len(selected)} mirror(s)")
+            return selected
+        else:
+            typer.echo("\n❌ No valid mirrors selected")
+            raise typer.Exit(1)
+
+    except ValueError:
+        typer.echo("\n❌ Invalid selection format")
+        typer.echo("   Expected: numbers (1,2,3) or ranges (1-3) or 'all'")
         raise typer.Exit(1)
 
 
 def update_mirrors_command(
     repo: Annotated[
         Optional[str],
-        typer.Option("--repo", "-r", help="Specific repository to update (owner/repo)"),
+        typer.Option(
+            "--repo",
+            "-r",
+            help="Specific repository to update (owner/repo)",
+            autocompletion=complete_repository,
+        ),
     ] = None,
     all: Annotated[bool, typer.Option("--all", "-a", help="Update all mirrors from cache")] = False,
     scan: Annotated[bool, typer.Option("--scan", "-s", help="Scan GitHub for all mirrors")] = False,

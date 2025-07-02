@@ -315,7 +315,7 @@ class TestUpdateMirrorsCommand:
         result = runner.invoke(app, ["update-mirrors"])
 
         assert result.exit_code == 0
-        assert "📋 Available mirrors:" in result.stdout
+        assert "📋 Found mirror repositories:" in result.stdout
         assert "📊 Update complete: 2/2 mirrors updated successfully" in result.stdout
 
     @patch("cli_git.commands.update_mirrors.check_gh_auth")
