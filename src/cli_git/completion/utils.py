@@ -1,7 +1,5 @@
 """Utility functions for completion operations."""
 
-from typing import Tuple
-
 from cli_git.utils.github import extract_repo_name_from_url, format_repo_description
 
 
@@ -44,7 +42,7 @@ def extract_mirror_name_from_url(mirror_url: str) -> str:
 
 def create_completion_entry(
     repo_name: str, description: str = "", is_mirror: bool = True
-) -> Tuple[str, str]:
+) -> tuple[str, str]:
     """Create a completion entry tuple.
 
     Args:

@@ -1,7 +1,6 @@
 """Workflow setup for private mirror functionality."""
 
 from pathlib import Path
-from typing import Optional
 
 from cli_git.core.workflow import generate_sync_workflow
 from cli_git.utils.gh import add_repo_secret
@@ -35,8 +34,8 @@ def add_workflow_secrets(
     repo_full_name: str,
     upstream_url: str,
     upstream_branch: str,
-    slack_url: Optional[str] = None,
-    github_token: Optional[str] = None,
+    slack_url: str | None = None,
+    github_token: str | None = None,
 ) -> None:
     """Add necessary secrets for workflow execution.
 

@@ -300,7 +300,7 @@ def init_command(
         username = get_current_username()
     except GitHubError as e:
         typer.echo(f"❌ {e}")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
     # Step 3: Check existing configuration
     config_manager = ConfigManager()

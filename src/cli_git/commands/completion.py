@@ -4,7 +4,6 @@ import os
 import subprocess
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Optional
 
 import typer
 
@@ -120,7 +119,7 @@ class FishCompletionHandler(ShellCompletionHandler):
         return f"✅ Completion installed to {completion_file}\n   Completion will be available in new shell sessions"
 
 
-def get_shell_handler(shell: str) -> Optional[ShellCompletionHandler]:
+def get_shell_handler(shell: str) -> ShellCompletionHandler | None:
     """Get the appropriate shell handler for the given shell.
 
     Args:
@@ -207,10 +206,10 @@ def install_completion_with_handler(handler: ShellCompletionHandler, shell: str)
     except subprocess.CalledProcessError as e:
         typer.echo(f"❌ Failed to generate completion: {e}")
         typer.echo("   Try running: cli-git --install-completion")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
     except Exception as e:
         typer.echo(f"❌ Error installing completion: {e}")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
 
 def completion_install_command() -> None:

@@ -1,9 +1,7 @@
 """GitHub-related utility functions."""
 
-from typing import Optional
 
-
-def extract_repo_name_from_url(url: str) -> Optional[str]:
+def extract_repo_name_from_url(url: str) -> str | None:
     """Extract repository name from GitHub URL.
 
     Args:

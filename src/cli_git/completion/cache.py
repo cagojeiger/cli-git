@@ -1,7 +1,5 @@
 """Cache-related completion functions."""
 
-from typing import List, Tuple
-
 from cli_git.completion.utils import (
     create_completion_entry,
     extract_mirror_name_from_url,
@@ -13,7 +11,7 @@ from cli_git.utils.github import format_repo_description
 
 def get_completions_from_scanned_mirrors(
     incomplete: str, config_manager: ConfigManager
-) -> List[Tuple[str, str]]:
+) -> list[tuple[str, str]]:
     """Get completions from scanned mirrors cache.
 
     Args:
@@ -44,7 +42,7 @@ def get_completions_from_scanned_mirrors(
 
 def get_completions_from_cache(
     incomplete: str, config_manager: ConfigManager
-) -> List[Tuple[str, str]]:
+) -> list[tuple[str, str]]:
     """Get completions from repository completion cache.
 
     Args:
@@ -91,7 +89,7 @@ def get_completions_from_cache(
 
 def get_fallback_completions(
     incomplete: str, config_manager: ConfigManager
-) -> List[Tuple[str, str]]:
+) -> list[tuple[str, str]]:
     """Get fallback completions from recent mirrors when API fails.
 
     Args:

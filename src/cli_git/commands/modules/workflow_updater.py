@@ -1,7 +1,6 @@
 """Workflow update functionality for mirror repositories."""
 
 import subprocess
-from typing import Optional
 
 from cli_git.utils.gh import GitHubError
 
@@ -46,7 +45,7 @@ def update_workflow_file(repo: str, content: str) -> bool:
             workflow_path = os.path.join(tmpdir, ".github", "workflows", "mirror-sync.yml")
             existing_content = ""
             if os.path.exists(workflow_path):
-                with open(workflow_path, "r") as f:
+                with open(workflow_path) as f:
                     existing_content = f.read()
 
             # Only update if content is different
@@ -72,12 +71,12 @@ def update_workflow_file(repo: str, content: str) -> bool:
             return True
 
     except subprocess.CalledProcessError as e:
-        raise GitHubError(f"Failed to update workflow: {e}")
+        raise GitHubError(f"Failed to update workflow: {e}") from e
     except Exception as e:
-        raise GitHubError(f"Unexpected error updating workflow: {e}")
+        raise GitHubError(f"Unexpected error updating workflow: {e}") from e
 
 
-def get_repo_secret_value(repo: str, secret_name: str) -> Optional[str]:
+def get_repo_secret_value(repo: str, secret_name: str) -> str | None:
     """Try to get a repository secret value.
 
     Note: Most secrets are write-only via API. This only works for

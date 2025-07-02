@@ -1,7 +1,5 @@
 """Completion functions for cli-git commands."""
 
-from typing import List, Tuple, Union
-
 from cli_git.completion.api import get_completions_from_api
 from cli_git.completion.cache import (
     get_completions_from_cache,
@@ -12,7 +10,7 @@ from cli_git.utils.config import ConfigManager
 from cli_git.utils.gh import GitHubError, get_user_organizations
 
 
-def complete_organization(incomplete: str) -> List[Union[str, Tuple[str, str]]]:
+def complete_organization(incomplete: str) -> list[str | tuple[str, str]]:
     """Complete organization names.
 
     Args:
@@ -33,7 +31,7 @@ def complete_organization(incomplete: str) -> List[Union[str, Tuple[str, str]]]:
         return []
 
 
-def complete_schedule(incomplete: str) -> List[Tuple[str, str]]:
+def complete_schedule(incomplete: str) -> list[tuple[str, str]]:
     """Complete common cron schedules.
 
     Args:
@@ -58,7 +56,7 @@ def complete_schedule(incomplete: str) -> List[Tuple[str, str]]:
     return [(s, d) for s, d in schedules if s.startswith(incomplete)]
 
 
-def complete_prefix(incomplete: str) -> List[Tuple[str, str]]:
+def complete_prefix(incomplete: str) -> list[tuple[str, str]]:
     """Complete common mirror prefixes.
 
     Args:
@@ -96,7 +94,7 @@ def complete_prefix(incomplete: str) -> List[Tuple[str, str]]:
     return [(p, d) for p, d in unique_prefixes if p.startswith(incomplete)]
 
 
-def complete_repository(incomplete: str) -> List[Union[str, Tuple[str, str]]]:
+def complete_repository(incomplete: str) -> list[str | tuple[str, str]]:
     """Complete repository names for mirror operations.
 
     Args:

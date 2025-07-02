@@ -3,7 +3,7 @@
 import json
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import tomlkit
 from tomlkit import comment, document, nl, table
@@ -65,12 +65,12 @@ class ConfigManager:
         self.config_file.write_text(tomlkit.dumps(doc))
         os.chmod(self.config_file, 0o600)
 
-    def get_config(self) -> Dict[str, Any]:
+    def get_config(self) -> dict[str, Any]:
         """Get current configuration."""
         content = self.config_file.read_text()
         return tomlkit.loads(content)
 
-    def update_config(self, updates: Dict[str, Any]) -> None:
+    def update_config(self, updates: dict[str, Any]) -> None:
         """Update configuration while preserving structure and comments.
 
         Args:
@@ -91,7 +91,7 @@ class ConfigManager:
         self.config_file.write_text(tomlkit.dumps(doc))
         os.chmod(self.config_file, 0o600)
 
-    def add_recent_mirror(self, mirror_info: Dict[str, str]) -> None:
+    def add_recent_mirror(self, mirror_info: dict[str, str]) -> None:
         """Add a mirror to recent mirrors cache.
 
         Args:
@@ -106,7 +106,7 @@ class ConfigManager:
         # Save to cache
         self.mirrors_cache.write_text(json.dumps(mirrors, indent=2))
 
-    def get_recent_mirrors(self) -> List[Dict[str, str]]:
+    def get_recent_mirrors(self) -> list[dict[str, str]]:
         """Get list of recently created mirrors."""
         if not self.mirrors_cache.exists():
             return []
@@ -118,7 +118,7 @@ class ConfigManager:
             return []
 
     def save_scanned_mirrors(
-        self, mirrors: List[Dict[str, str]], prefix: Optional[str] = None
+        self, mirrors: list[dict[str, str]], prefix: str | None = None
     ) -> None:
         """Save scanned mirrors to cache with metadata.
 
@@ -133,8 +133,8 @@ class ConfigManager:
         self.scanned_mirrors_cache.write_text(json.dumps(cache_data, indent=2))
 
     def get_scanned_mirrors(
-        self, prefix: Optional[str] = None, max_age: int = 1800
-    ) -> Optional[List[Dict[str, str]]]:
+        self, prefix: str | None = None, max_age: int = 1800
+    ) -> list[dict[str, str]] | None:
         """Get cached scanned mirrors if they're fresh enough.
 
         Args:
@@ -163,7 +163,7 @@ class ConfigManager:
         except (json.JSONDecodeError, FileNotFoundError, KeyError):
             return None
 
-    def save_repo_completion_cache(self, repos: List[Dict[str, Any]]) -> None:
+    def save_repo_completion_cache(self, repos: list[dict[str, Any]]) -> None:
         """Save repository completion data to cache.
 
         Args:
@@ -175,7 +175,7 @@ class ConfigManager:
 
         self.repo_completion_cache.write_text(json.dumps(cache_data, indent=2))
 
-    def get_repo_completion_cache(self, max_age: int = 600) -> Optional[List[Dict[str, Any]]]:
+    def get_repo_completion_cache(self, max_age: int = 600) -> list[dict[str, Any]] | None:
         """Get cached repository completion data if fresh enough.
 
         Args:

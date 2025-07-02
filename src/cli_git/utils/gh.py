@@ -1,7 +1,6 @@
 """GitHub CLI (gh) utility functions."""
 
 import subprocess
-from typing import List, Optional
 
 from cli_git.utils.git import extract_repo_info
 
@@ -13,7 +12,7 @@ class GitHubError(Exception):
 
 
 def run_gh_command(
-    args: List[str],
+    args: list[str],
     check: bool = True,
     capture_output: bool = True,
     interactive: bool = False,
@@ -42,9 +41,9 @@ def run_gh_command(
             return subprocess.run(cmd, capture_output=capture_output, text=True, check=check)
     except subprocess.CalledProcessError as e:
         stderr = getattr(e, "stderr", "") or ""
-        raise GitHubError(f"gh command failed: {stderr}")
-    except FileNotFoundError:
-        raise GitHubError("gh CLI not found. Please install GitHub CLI.")
+        raise GitHubError(f"gh command failed: {stderr}") from e
+    except FileNotFoundError as e:
+        raise GitHubError("gh CLI not found. Please install GitHub CLI.") from e
 
 
 def check_gh_auth() -> bool:
@@ -86,9 +85,7 @@ def get_current_username() -> str:
     return result.stdout.strip()
 
 
-def create_private_repo(
-    name: str, description: Optional[str] = None, org: Optional[str] = None
-) -> str:
+def create_private_repo(name: str, description: str | None = None, org: str | None = None) -> str:
     """Create a private GitHub repository.
 
     Args:
@@ -116,8 +113,8 @@ def create_private_repo(
     except GitHubError as e:
         error_msg = str(e)
         if "Validation Failed" in error_msg or "already exists" in error_msg:
-            raise GitHubError(f"Repository '{repo_name}' already exists")
-        raise GitHubError(f"Failed to create repository: {error_msg}")
+            raise GitHubError(f"Repository '{repo_name}' already exists") from e
+        raise GitHubError(f"Failed to create repository: {error_msg}") from e
 
 
 def add_repo_secret(repo: str, name: str, value: str) -> None:
@@ -139,7 +136,7 @@ def add_repo_secret(repo: str, name: str, value: str) -> None:
         subprocess.run(cmd, input=value, capture_output=True, text=True, check=True)
     except subprocess.CalledProcessError as e:
         stderr = getattr(e, "stderr", "") or ""
-        raise GitHubError(f"Failed to set secret '{name}': {stderr}")
+        raise GitHubError(f"Failed to set secret '{name}': {stderr}") from e
 
 
 def get_user_organizations() -> list[str]:
@@ -174,7 +171,7 @@ def get_upstream_default_branch(upstream_url: str) -> str:
         result = run_gh_command(["api", f"repos/{owner}/{repo}", "-q", ".default_branch"])
         return result.stdout.strip()
     except ValueError as e:
-        raise GitHubError(f"Invalid repository URL: {e}")
+        raise GitHubError(f"Invalid repository URL: {e}") from e
 
 
 def validate_github_token(token: str) -> bool:

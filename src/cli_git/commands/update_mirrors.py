@@ -4,7 +4,7 @@ import subprocess
 from dataclasses import dataclass
 
 # Type definitions
-from typing import Annotated, Dict, List, Optional
+from typing import Annotated
 
 import typer
 
@@ -30,7 +30,7 @@ class MirrorUpdateResult:
 
     success_count: int = 0
     total_count: int = 0
-    failed_mirrors: List[str] = None
+    failed_mirrors: list[str] = None
 
     def __post_init__(self):
         if self.failed_mirrors is None:
@@ -64,14 +64,14 @@ def check_update_prerequisites() -> tuple[ConfigManager, dict, str]:
         username = get_current_username()
     except GitHubError as e:
         typer.echo(f"❌ {e}")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
     return config_manager, config, username
 
 
 def update_mirrors_command(
     repo: Annotated[
-        Optional[str],
+        str | None,
         typer.Option(
             "--repo",
             "-r",
@@ -199,7 +199,7 @@ def _display_scan_results(mirrors: list) -> None:
 
 
 def _find_mirrors_to_update(
-    repo: Optional[str],
+    repo: str | None,
     config_manager: ConfigManager,
     config: dict,
     username: str,
@@ -237,7 +237,7 @@ def _find_mirrors_to_update(
     return mirrors
 
 
-def extract_mirror_repo_name(mirror: Dict[str, any]) -> Optional[str]:
+def extract_mirror_repo_name(mirror: dict[str, any]) -> str | None:
     """Extract repository name from mirror data.
 
     Args:
@@ -276,7 +276,7 @@ def check_mirror_sync_exists(repo_name: str) -> bool:
 
 
 def update_mirror_secrets(
-    repo_name: str, upstream_url: Optional[str], github_token: str, slack_webhook_url: str
+    repo_name: str, upstream_url: str | None, github_token: str, slack_webhook_url: str
 ) -> None:
     """Update repository secrets for mirror.
 
@@ -308,7 +308,7 @@ def update_mirror_secrets(
 
 
 def update_mirror_workflow(
-    repo_name: str, upstream_url: Optional[str], upstream_branch: Optional[str] = None
+    repo_name: str, upstream_url: str | None, upstream_branch: str | None = None
 ) -> bool:
     """Update workflow file for mirror.
 
@@ -338,7 +338,7 @@ def update_mirror_workflow(
     return workflow_updated
 
 
-def update_single_mirror(mirror: Dict[str, any], github_token: str, slack_webhook_url: str) -> bool:
+def update_single_mirror(mirror: dict[str, any], github_token: str, slack_webhook_url: str) -> bool:
     """Update a single mirror repository.
 
     Args:

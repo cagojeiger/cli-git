@@ -3,12 +3,12 @@
 import os
 import shutil
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 # Type definitions
-from typing import Annotated, Dict, Optional
+from typing import Annotated
 
 import typer
 
@@ -47,11 +47,11 @@ class MirrorConfig:
     upstream_url: str
     target_name: str
     username: str
-    org: Optional[str] = None
+    org: str | None = None
     schedule: str = "0 0 * * *"
     no_sync: bool = False
-    slack_webhook_url: Optional[str] = None
-    github_token: Optional[str] = None
+    slack_webhook_url: str | None = None
+    github_token: str | None = None
 
 
 def clean_github_directory(repo_path: Path) -> bool:
@@ -87,8 +87,8 @@ def setup_mirror_sync(
     repo_full_name: str,
     upstream_url: str,
     schedule: str,
-    slack_webhook_url: Optional[str] = None,
-    github_token: Optional[str] = None,
+    slack_webhook_url: str | None = None,
+    github_token: str | None = None,
 ) -> None:
     """Setup automatic synchronization for mirror repository.
 
@@ -185,7 +185,7 @@ def private_mirror_operation(config: MirrorConfig) -> str:
 
 
 def validate_mirror_inputs(
-    upstream: str, org: Optional[str], schedule: str, prefix: Optional[str]
+    upstream: str, org: str | None, schedule: str, prefix: str | None
 ) -> None:
     """Validate all inputs for private mirror command.
 
@@ -214,11 +214,11 @@ def validate_mirror_inputs(
 
 
 def resolve_mirror_parameters(
-    config: Dict[str, any],
+    config: dict[str, any],
     repo_name: str,
-    custom_repo: Optional[str],
-    prefix: Optional[str],
-    org: Optional[str],
+    custom_repo: str | None,
+    prefix: str | None,
+    org: str | None,
 ) -> tuple[str, str]:
     """Resolve mirror parameters from config and inputs.
 
@@ -237,10 +237,7 @@ def resolve_mirror_parameters(
         prefix = config["preferences"].get("default_prefix", "mirror-")
 
     # Determine target repository name
-    if custom_repo:
-        target_name = custom_repo  # Custom name overrides prefix
-    else:
-        target_name = f"{prefix}{repo_name}" if prefix else repo_name
+    target_name = custom_repo or (f"{prefix}{repo_name}" if prefix else repo_name)
 
     # Use default org from config if not specified
     if not org and config["github"]["default_org"]:
@@ -276,12 +273,12 @@ def check_prerequisites() -> ConfigManager:
 
 def prepare_mirror_config(
     upstream: str,
-    repo: Optional[str],
-    prefix: Optional[str],
-    org: Optional[str],
+    repo: str | None,
+    prefix: str | None,
+    org: str | None,
     schedule: str,
     no_sync: bool,
-    config: Dict[str, any],
+    config: dict[str, any],
 ) -> MirrorConfig:
     """Prepare mirror configuration from inputs and config.
 
@@ -305,7 +302,7 @@ def prepare_mirror_config(
         _, repo_name = extract_repo_info(upstream)
     except ValueError as e:
         typer.echo(f"❌ {e}")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
     # Resolve parameters
     target_name, org = resolve_mirror_parameters(config, repo_name, repo, prefix, org)
@@ -315,14 +312,14 @@ def prepare_mirror_config(
         validate_repository_name(target_name)
     except ValidationError as e:
         typer.echo(str(e))
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
     # Get current username
     try:
         username = get_current_username()
     except GitHubError as e:
         typer.echo(f"❌ {e}")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
     return MirrorConfig(
         upstream_url=upstream,
@@ -347,7 +344,7 @@ def save_mirror_info(config_manager: ConfigManager, upstream: str, mirror_url: s
     mirror_info = {
         "upstream": upstream,
         "mirror": mirror_url,
-        "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }
     config_manager.add_recent_mirror(mirror_info)
 
@@ -374,17 +371,15 @@ def display_success_message(mirror_url: str, no_sync: bool) -> None:
 
 def private_mirror_command(
     upstream: Annotated[str, typer.Argument(help="Upstream repository URL")],
-    repo: Annotated[
-        Optional[str], typer.Option("--repo", "-r", help="Mirror repository name")
-    ] = None,
+    repo: Annotated[str | None, typer.Option("--repo", "-r", help="Mirror repository name")] = None,
     org: Annotated[
-        Optional[str],
+        str | None,
         typer.Option(
             "--org", "-o", help="Target organization", autocompletion=complete_organization
         ),
     ] = None,
     prefix: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--prefix", "-p", help="Mirror name prefix", autocompletion=complete_prefix),
     ] = None,
     schedule: Annotated[
@@ -406,7 +401,7 @@ def private_mirror_command(
         validate_mirror_inputs(upstream, org, schedule, prefix)
     except ValidationError as e:
         typer.echo(str(e))
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
     # Step 3: Prepare mirror configuration
     mirror_config = prepare_mirror_config(
@@ -427,7 +422,7 @@ def private_mirror_command(
 
     except GitHubError as e:
         typer.echo(f"\n❌ Failed to create mirror: {e}")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
     except Exception as e:
         typer.echo(f"\n❌ Unexpected error: {e}")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e

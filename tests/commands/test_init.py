@@ -166,17 +166,19 @@ class TestInitCommand:
         mock_login.return_value = True
 
         # Need to mock the subsequent auth check and username after login
-        with patch("cli_git.commands.init.get_current_username") as mock_username:
-            with patch("cli_git.commands.init.ConfigManager") as mock_config_manager:
-                mock_username.return_value = "testuser"
-                mock_manager = MagicMock()
-                mock_config_manager.return_value = mock_manager
-                mock_manager.get_config.return_value = {
-                    "github": {"username": "", "default_org": ""},
-                    "preferences": {"default_schedule": "0 0 * * *"},
-                }
+        with (
+            patch("cli_git.commands.init.get_current_username") as mock_username,
+            patch("cli_git.commands.init.ConfigManager") as mock_config_manager,
+        ):
+            mock_username.return_value = "testuser"
+            mock_manager = MagicMock()
+            mock_config_manager.return_value = mock_manager
+            mock_manager.get_config.return_value = {
+                "github": {"username": "", "default_org": ""},
+                "preferences": {"default_schedule": "0 0 * * *"},
+            }
 
-                result = runner.invoke(app, ["init"], input="\n\nmirror-\n")
+            result = runner.invoke(app, ["init"], input="\n\nmirror-\n")
 
         assert result.exit_code == 0
         assert "🔐 GitHub CLI is not authenticated" in result.stdout

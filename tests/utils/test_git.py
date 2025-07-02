@@ -166,9 +166,7 @@ class TestGitUtils:
         # Second call fails (no remote branches)
         # Third call succeeds for main branch check
         def side_effect_func(cmd, cwd=None):
-            if "symbolic-ref" in cmd:
-                raise subprocess.CalledProcessError(1, "git")
-            elif "branch -r" in cmd:
+            if "symbolic-ref" in cmd or "branch -r" in cmd:
                 raise subprocess.CalledProcessError(1, "git")
             elif "show-ref" in cmd and "main" in cmd:
                 return ""  # show-ref for main succeeds
@@ -190,9 +188,7 @@ class TestGitUtils:
         # Third call fails (no main branch)
         # Fourth call succeeds (master exists)
         def side_effect_func(cmd, cwd=None):
-            if "symbolic-ref" in cmd:
-                raise subprocess.CalledProcessError(1, "git")
-            elif "branch -r" in cmd:
+            if "symbolic-ref" in cmd or "branch -r" in cmd:
                 raise subprocess.CalledProcessError(1, "git")
             elif "show-ref" in cmd and "main" in cmd:
                 raise subprocess.CalledProcessError(1, "git")  # main check fails

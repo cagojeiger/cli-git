@@ -2,7 +2,6 @@
 
 import json
 import subprocess
-from typing import Dict, List, Tuple
 
 from cli_git.completion.utils import create_completion_entry, matches_incomplete
 from cli_git.utils.config import ConfigManager
@@ -12,7 +11,7 @@ from cli_git.utils.github import format_repo_description
 
 def determine_search_owners(
     incomplete: str, username: str, default_org: str
-) -> Tuple[List[str], str]:
+) -> tuple[list[str], str]:
     """Determine which owners to search for repositories.
 
     Args:
@@ -57,7 +56,7 @@ def check_is_mirror(repo_name: str) -> bool:
         return False
 
 
-def fetch_repos_for_owner(owner: str, repo_part: str, incomplete: str) -> List[Dict[str, str]]:
+def fetch_repos_for_owner(owner: str, repo_part: str, incomplete: str) -> list[dict[str, str]]:
     """Fetch repositories for a specific owner.
 
     Args:
@@ -116,7 +115,7 @@ def fetch_repos_for_owner(owner: str, repo_part: str, incomplete: str) -> List[D
 
 def get_completions_from_api(
     incomplete: str, config_manager: ConfigManager
-) -> List[Tuple[str, str]]:
+) -> list[tuple[str, str]]:
     """Get completions from GitHub API.
 
     Args:
@@ -158,10 +157,13 @@ def get_completions_from_api(
     if recent_mirrors:
         for mirror in recent_mirrors[:10]:
             mirror_name = mirror.get("name", "")
-            if mirror_name and not any(c[0] == mirror_name for c in completions):
-                if matches_incomplete(mirror_name, incomplete):
-                    upstream = mirror.get("upstream", "")
-                    desc = format_repo_description(upstream, "Mirror repository")
-                    completions.append((mirror_name, desc))
+            if (
+                mirror_name
+                and not any(c[0] == mirror_name for c in completions)
+                and matches_incomplete(mirror_name, incomplete)
+            ):
+                upstream = mirror.get("upstream", "")
+                desc = format_repo_description(upstream, "Mirror repository")
+                completions.append((mirror_name, desc))
 
     return completions

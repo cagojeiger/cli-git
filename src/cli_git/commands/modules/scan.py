@@ -3,14 +3,13 @@
 import base64
 import json
 import subprocess
-from typing import Dict, List, Optional
 
 import typer
 
 
 def scan_for_mirrors(
-    username: str, org: Optional[str] = None, prefix: Optional[str] = None
-) -> List[Dict[str, str]]:
+    username: str, org: str | None = None, prefix: str | None = None
+) -> list[dict[str, str]]:
     """Scan GitHub for mirror repositories.
 
     Args:
@@ -47,7 +46,7 @@ def scan_for_mirrors(
     return mirrors
 
 
-def _get_repositories(owner: str, prefix: Optional[str] = None) -> List[Dict]:
+def _get_repositories(owner: str, prefix: str | None = None) -> list[dict]:
     """Get repositories for an owner, optionally filtered by prefix.
 
     Args:
@@ -113,7 +112,7 @@ def _is_mirror_repo(repo_name: str) -> bool:
     return result.returncode == 0
 
 
-def _extract_mirror_info(repo_data: Dict) -> Dict[str, str]:
+def _extract_mirror_info(repo_data: dict) -> dict[str, str]:
     """Extract mirror information from repository data.
 
     Args:

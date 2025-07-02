@@ -1,7 +1,6 @@
 """Validation functions for cli-git commands."""
 
 import re
-from typing import Optional
 
 from cli_git.utils.gh import GitHubError, get_user_organizations
 
@@ -12,7 +11,7 @@ class ValidationError(Exception):
     pass
 
 
-def validate_organization(org: Optional[str]) -> Optional[str]:
+def validate_organization(org: str | None) -> str | None:
     """Validate that the organization exists and user has access.
 
     Args:
@@ -87,7 +86,7 @@ def validate_cron_schedule(schedule: str) -> str:
             raise ValidationError(f"❌ Invalid weekday field: '{weekday}' (must be 0-7)")
 
     except ValueError as e:
-        raise ValidationError(f"❌ Invalid cron schedule: {e}")
+        raise ValidationError(f"❌ Invalid cron schedule: {e}") from e
 
     return schedule
 

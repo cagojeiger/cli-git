@@ -4,10 +4,9 @@ import re
 import shlex
 import subprocess
 from pathlib import Path
-from typing import Optional, Tuple
 
 
-def run_git_command(cmd: str, cwd: Optional[Path] = None) -> str:
+def run_git_command(cmd: str, cwd: Path | None = None) -> str:
     """Execute a git command and return output.
 
     Args:
@@ -33,7 +32,7 @@ def run_git_command(cmd: str, cwd: Optional[Path] = None) -> str:
     return result.stdout.strip()
 
 
-def get_default_branch(cwd: Optional[Path] = None) -> str:
+def get_default_branch(cwd: Path | None = None) -> str:
     """Get the default branch of the current repository.
 
     Args:
@@ -80,7 +79,7 @@ def get_default_branch(cwd: Optional[Path] = None) -> str:
     raise subprocess.CalledProcessError(1, "git", "Unable to determine default branch")
 
 
-def extract_repo_info(url: str) -> Tuple[str, str]:
+def extract_repo_info(url: str) -> tuple[str, str]:
     """Extract owner and repository name from a git URL.
 
     Args:

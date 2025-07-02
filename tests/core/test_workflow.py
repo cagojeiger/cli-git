@@ -110,7 +110,7 @@ class TestWorkflow:
         # Find the Sync tags section
         tag_sync_found = False
         gh_token_env_found = False
-        for i, line in enumerate(lines):
+        for _i, line in enumerate(lines):
             if "- name: Sync tags" in line:
                 tag_sync_found = True
             if tag_sync_found and "GH_TOKEN: ${{ secrets.GH_TOKEN }}" in line:

@@ -1,14 +1,12 @@
 """Interactive mirror selection functionality."""
 
-from typing import Dict, List
-
 import typer
 
 from cli_git.utils.git import extract_repo_info
 from cli_git.utils.github import extract_repo_name_from_url
 
 
-def select_mirrors_interactive(mirrors: List[Dict[str, str]]) -> List[Dict[str, str]]:
+def select_mirrors_interactive(mirrors: list[dict[str, str]]) -> list[dict[str, str]]:
     """Interactively select mirrors to update.
 
     Args:
@@ -26,7 +24,7 @@ def select_mirrors_interactive(mirrors: List[Dict[str, str]]) -> List[Dict[str, 
     return _process_selection(selection, mirrors)
 
 
-def _display_mirrors(mirrors: List[Dict[str, str]]) -> None:
+def _display_mirrors(mirrors: list[dict[str, str]]) -> None:
     """Display mirrors in a formatted list.
 
     Args:
@@ -50,7 +48,7 @@ def _display_mirrors(mirrors: List[Dict[str, str]]) -> None:
     typer.echo("  • Type 'none' or 'q' to cancel")
 
 
-def _get_mirror_name(mirror: Dict[str, str]) -> str:
+def _get_mirror_name(mirror: dict[str, str]) -> str:
     """Extract mirror repository name.
 
     Args:
@@ -72,7 +70,7 @@ def _get_mirror_name(mirror: Dict[str, str]) -> str:
         return "Unknown"
 
 
-def _get_upstream_display(mirror: Dict[str, str]) -> str:
+def _get_upstream_display(mirror: dict[str, str]) -> str:
     """Get display name for upstream repository.
 
     Args:
@@ -99,7 +97,7 @@ def _get_user_selection() -> str:
     return typer.prompt("\n📝 Your selection", default="all")
 
 
-def _process_selection(selection: str, mirrors: List[Dict[str, str]]) -> List[Dict[str, str]]:
+def _process_selection(selection: str, mirrors: list[dict[str, str]]) -> list[dict[str, str]]:
     """Process user selection and return selected mirrors.
 
     Args:
@@ -140,13 +138,13 @@ def _process_selection(selection: str, mirrors: List[Dict[str, str]]) -> List[Di
             typer.echo("\n❌ No valid mirrors selected")
             raise typer.Exit(1)
 
-    except ValueError:
+    except ValueError as e:
         typer.echo("\n❌ Invalid selection format")
         typer.echo("   Expected: numbers (1,2,3) or ranges (1-3) or 'all'")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
 
-def _parse_numeric_selection(selection: str) -> List[int]:
+def _parse_numeric_selection(selection: str) -> list[int]:
     """Parse numeric selection string into list of indices.
 
     Args:
