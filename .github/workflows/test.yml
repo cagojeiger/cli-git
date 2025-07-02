@@ -58,7 +58,7 @@ jobs:
         run: uv sync --all-extras --dev
 
       - name: Run tests
-        run: uv run pytest -v --cov-report=xml -c config/pytest.ini
+        run: uv run pytest tests -v --cov=cli_git --cov-report=xml --cov-fail-under=85 --strict-markers
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
