@@ -3,7 +3,7 @@
 import json
 import os
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import tomlkit
 from tomlkit import comment, document, nl, table
@@ -23,6 +23,7 @@ class ConfigManager:
         self.config_file = self.config_dir / "settings.toml"
         self.cache_dir = self.config_dir / "cache"
         self.mirrors_cache = self.cache_dir / "recent_mirrors.json"
+        self.scanned_mirrors_cache = self.cache_dir / "scanned_mirrors.json"
 
         # Ensure directories exist
         self.config_dir.mkdir(exist_ok=True)
@@ -114,3 +115,54 @@ class ConfigManager:
             return json.loads(content)
         except (json.JSONDecodeError, FileNotFoundError):
             return []
+
+    def save_scanned_mirrors(
+        self, mirrors: List[Dict[str, str]], prefix: Optional[str] = None
+    ) -> None:
+        """Save scanned mirrors to cache with metadata.
+
+        Args:
+            mirrors: List of mirror dictionaries
+            prefix: Prefix used for scanning (optional)
+        """
+        import time
+
+        cache_data = {"timestamp": time.time(), "prefix": prefix, "mirrors": mirrors}
+
+        self.scanned_mirrors_cache.write_text(json.dumps(cache_data, indent=2))
+
+    def get_scanned_mirrors(
+        self, prefix: Optional[str] = None, max_age: int = 300
+    ) -> Optional[List[Dict[str, str]]]:
+        """Get cached scanned mirrors if they're fresh enough.
+
+        Args:
+            prefix: Prefix to match (optional)
+            max_age: Maximum age in seconds (default: 5 minutes)
+
+        Returns:
+            List of mirrors if cache is valid, None otherwise
+        """
+        if not self.scanned_mirrors_cache.exists():
+            return None
+
+        try:
+            import time
+
+            content = self.scanned_mirrors_cache.read_text()
+            cache_data = json.loads(content)
+
+            # Check age
+            age = time.time() - cache_data.get("timestamp", 0)
+            if age > max_age:
+                return None
+
+            # Check prefix match
+            cached_prefix = cache_data.get("prefix")
+            if prefix != cached_prefix:
+                return None
+
+            return cache_data.get("mirrors", [])
+
+        except (json.JSONDecodeError, FileNotFoundError, KeyError):
+            return None

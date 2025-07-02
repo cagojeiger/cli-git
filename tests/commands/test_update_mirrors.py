@@ -1,7 +1,7 @@
 """Tests for update-mirrors command."""
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 from typer.testing import CliRunner
@@ -69,20 +69,21 @@ class TestUpdateMirrorsCommand:
             "preferences": {},
         }
         mock_manager.get_recent_mirrors.return_value = []
+        mock_manager.get_scanned_mirrors.return_value = []  # Mock empty scan cache
 
         result = runner.invoke(app, ["update-mirrors"])
 
         assert result.exit_code == 0
-        assert "No mirrors found in cache" in result.stdout
-        assert "Use --scan to search GitHub for mirrors" in result.stdout
+        # When cached mirrors is empty and scanned cache is also empty, it shows no mirrors found
+        assert "No mirror repositories found" in result.stdout
 
     @patch("cli_git.commands.update_mirrors.check_gh_auth")
     @patch("cli_git.commands.update_mirrors.ConfigManager")
     @patch("cli_git.commands.update_mirrors.get_current_username")
     @patch("cli_git.commands.update_mirrors.get_upstream_default_branch")
     @patch("cli_git.commands.update_mirrors.add_repo_secret")
-    @patch("cli_git.commands.update_mirrors.update_workflow_via_api")
-    @patch("subprocess.run")
+    @patch("cli_git.commands.update_mirrors.update_workflow_file")
+    @patch("cli_git.commands.update_mirrors.subprocess.run")
     @patch("cli_git.commands.update_mirrors.typer.prompt")
     def test_update_specific_mirror(
         self,
@@ -120,6 +121,9 @@ class TestUpdateMirrorsCommand:
         result = runner.invoke(app, ["update-mirrors", "--repo", "testuser/mirror-repo"])
 
         # Verify the command succeeded
+        if result.exit_code != 0:
+            print(result.stdout)
+            print(result.stderr)
         assert result.exit_code == 0
         assert "🔄 Updating testuser/mirror-repo..." in result.stdout
 
@@ -133,8 +137,8 @@ class TestUpdateMirrorsCommand:
     @patch("cli_git.commands.update_mirrors.ConfigManager")
     @patch("cli_git.commands.update_mirrors.get_current_username")
     @patch("cli_git.commands.update_mirrors.add_repo_secret")
-    @patch("cli_git.commands.update_mirrors.update_workflow_via_api")
-    @patch("subprocess.run")
+    @patch("cli_git.commands.update_mirrors.update_workflow_file")
+    @patch("cli_git.commands.update_mirrors.subprocess.run")
     def test_update_specific_mirror_without_upstream(
         self,
         mock_subprocess,
@@ -183,8 +187,8 @@ class TestUpdateMirrorsCommand:
     @patch("cli_git.commands.update_mirrors.get_current_username")
     @patch("cli_git.commands.update_mirrors.get_upstream_default_branch")
     @patch("cli_git.commands.update_mirrors.add_repo_secret")
-    @patch("cli_git.commands.update_mirrors.update_workflow_via_api")
-    @patch("subprocess.run")
+    @patch("cli_git.commands.update_mirrors.update_workflow_file")
+    @patch("cli_git.commands.update_mirrors.subprocess.run")
     def test_update_all_mirrors_from_cache(
         self,
         mock_subprocess,
@@ -252,16 +256,20 @@ class TestUpdateMirrorsCommand:
 
         # Mock scan results - no mirrors found
         mock_scan.return_value = []
+        mock_manager.get_scanned_mirrors.return_value = None  # No cache
 
         result = runner.invoke(app, ["update-mirrors", "--scan"])
 
         assert result.exit_code == 0
         assert "Scanning GitHub for mirror repositories" in result.stdout
+        # Since scan returns empty list, it should show "No mirror repositories found"
         assert "No mirror repositories found" in result.stdout
         assert "Make sure you have mirror repositories" in result.stdout
 
-        # Verify scan was called with username and org
-        mock_scan.assert_called_once_with("testuser", "testorg")
+        # Verify scan was called with username, org, and prefix (None)
+        mock_scan.assert_called_once_with("testuser", "testorg", None)
+        # Verify cache was saved
+        mock_manager.save_scanned_mirrors.assert_called_once_with([], None)
 
     @patch("cli_git.commands.update_mirrors.check_gh_auth")
     @patch("cli_git.commands.update_mirrors.ConfigManager")
@@ -287,7 +295,7 @@ class TestUpdateMirrorsCommand:
         }
 
         # Mock scan results - found some mirrors
-        mock_scan.return_value = [
+        mirrors = [
             {
                 "name": "testuser/mirror-project1",
                 "mirror": "https://github.com/testuser/mirror-project1",
@@ -305,6 +313,8 @@ class TestUpdateMirrorsCommand:
                 "updated_at": "2025-01-02T12:00:00Z",
             },
         ]
+        mock_scan.return_value = mirrors
+        mock_manager.get_scanned_mirrors.return_value = None  # No cache
 
         result = runner.invoke(app, ["update-mirrors", "--scan"])
 
@@ -319,16 +329,18 @@ class TestUpdateMirrorsCommand:
         assert "cli-git update-mirrors --all" in result.stdout
         assert "cli-git update-mirrors --repo" in result.stdout
 
-        # Verify scan was called
-        mock_scan.assert_called_once_with("testuser", "")
+        # Verify scan was called with prefix parameter
+        mock_scan.assert_called_once_with("testuser", "", None)
+        # Verify mirrors were saved to cache
+        mock_manager.save_scanned_mirrors.assert_called_once_with(mirrors, None)
 
     @patch("cli_git.commands.update_mirrors.check_gh_auth")
     @patch("cli_git.commands.update_mirrors.ConfigManager")
     @patch("cli_git.commands.update_mirrors.get_current_username")
     @patch("cli_git.commands.update_mirrors.get_upstream_default_branch")
     @patch("cli_git.commands.update_mirrors.add_repo_secret")
-    @patch("cli_git.commands.update_mirrors.update_workflow_via_api")
-    @patch("subprocess.run")
+    @patch("cli_git.commands.update_mirrors.update_workflow_file")
+    @patch("cli_git.commands.update_mirrors.subprocess.run")
     @patch("cli_git.commands.update_mirrors.typer.prompt")
     def test_interactive_mirror_selection(
         self,
@@ -384,8 +396,8 @@ class TestUpdateMirrorsCommand:
     @patch("cli_git.commands.update_mirrors.get_current_username")
     @patch("cli_git.commands.update_mirrors.get_upstream_default_branch")
     @patch("cli_git.commands.update_mirrors.add_repo_secret")
-    @patch("cli_git.commands.update_mirrors.update_workflow_via_api")
-    @patch("subprocess.run")
+    @patch("cli_git.commands.update_mirrors.update_workflow_file")
+    @patch("cli_git.commands.update_mirrors.subprocess.run")
     def test_update_mirror_with_error(
         self,
         mock_subprocess,
@@ -425,32 +437,36 @@ class TestUpdateMirrorsCommand:
         assert "❌ Unexpected error updating" in result.stdout
         assert "💡 For failed updates, you may need to:" in result.stdout
 
-    def test_update_workflow_via_api(self):
-        """Test the update_workflow_via_api function."""
-        from cli_git.commands.update_mirrors import update_workflow_via_api
+    def test_update_workflow_file(self):
+        """Test the update_workflow_file function."""
+        from cli_git.commands.modules.workflow_updater import update_workflow_file
 
         with patch("subprocess.run") as mock_run:
             # Mock getting current file (exists)
             mock_run.return_value.returncode = 0
             mock_run.return_value.stdout = json.dumps({"sha": "abc123"})
 
-            # Test updating existing file
-            update_workflow_via_api("owner/repo", "workflow content")
+            with patch("tempfile.TemporaryDirectory") as mock_tempdir:
+                with patch("os.chdir"):
+                    with patch("os.makedirs"):
+                        with patch("builtins.open", mock_open()) as mock_file:
+                            # Mock successful clone and push
+                            mock_run.return_value.returncode = 0
+                            mock_tempdir.return_value.__enter__.return_value = "/tmp/test"
 
-            # Verify API was called with PUT and SHA
-            calls = mock_run.call_args_list
-            assert len(calls) == 2
-            assert "PUT" in str(calls[1])
-            assert "sha=abc123" in str(calls[1])
+                            # Test updating workflow
+                            update_workflow_file("owner/repo", "workflow content")
+
+                            # Verify file was written
+                            mock_file.assert_called_once()
+                            mock_file().write.assert_called_once_with("workflow content")
 
     def test_scan_for_mirrors_function(self):
         """Test the scan_for_mirrors function."""
-        from cli_git.commands.update_mirrors import scan_for_mirrors
+        from cli_git.commands.modules.scan import scan_for_mirrors
 
         with patch("subprocess.run") as mock_run:
-            with patch(
-                "cli_git.commands.update_mirrors.typer.echo"
-            ):  # Mock echo to suppress output
+            with patch("cli_git.commands.modules.scan.typer.echo"):  # Mock echo to suppress output
                 # First call returns repo list with extended fields
                 repo_list = [
                     {
@@ -486,10 +502,10 @@ class TestUpdateMirrorsCommand:
 
     def test_scan_for_mirrors_function_with_org(self):
         """Test the scan_for_mirrors function with organization."""
-        from cli_git.commands.update_mirrors import scan_for_mirrors
+        from cli_git.commands.modules.scan import scan_for_mirrors
 
         with patch("subprocess.run") as mock_run:
-            with patch("cli_git.commands.update_mirrors.typer.echo"):  # Mock echo
+            with patch("cli_git.commands.modules.scan.typer.echo"):  # Mock echo
                 # Mock for user repos
                 user_repos = [
                     {
