@@ -5,6 +5,7 @@ from typing import Dict, List
 import typer
 
 from cli_git.utils.git import extract_repo_info
+from cli_git.utils.github import extract_repo_name_from_url
 
 
 def select_mirrors_interactive(mirrors: List[Dict[str, str]]) -> List[Dict[str, str]]:
@@ -85,16 +86,8 @@ def _get_upstream_display(mirror: Dict[str, str]) -> str:
     if not upstream:
         return "Unknown"
 
-    if "github.com/" not in upstream:
-        return upstream
-
-    try:
-        parts = upstream.split("github.com/")[-1].split("/")
-        if len(parts) >= 2:
-            return f"{parts[0]}/{parts[1]}"
-        return upstream
-    except Exception:
-        return upstream
+    repo_name = extract_repo_name_from_url(upstream)
+    return repo_name if repo_name else upstream
 
 
 def _get_user_selection() -> str:

@@ -445,4 +445,4 @@ class TestCompletion:
 
         # Test with complex GitHub URL
         desc = _get_mirror_description("https://github.com/owner/repo.git")
-        assert desc == "🔄 Mirror of owner/repo.git"
+        assert desc == "🔄 Mirror of owner/repo"

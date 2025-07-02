@@ -6,6 +6,7 @@ from typing import List, Tuple, Union
 
 from cli_git.utils.config import ConfigManager
 from cli_git.utils.gh import GitHubError, get_current_username, get_user_organizations
+from cli_git.utils.github import format_repo_description
 
 
 def _get_mirror_description(upstream: str) -> str:
@@ -17,19 +18,7 @@ def _get_mirror_description(upstream: str) -> str:
     Returns:
         Formatted description string
     """
-    if upstream:
-        # Extract upstream name
-        if "github.com/" in upstream:
-            upstream_parts = upstream.split("github.com/")[-1].split("/")
-            if len(upstream_parts) >= 2:
-                upstream_name = f"{upstream_parts[0]}/{upstream_parts[1]}"
-            else:
-                upstream_name = upstream
-        else:
-            upstream_name = upstream
-        return f"🔄 Mirror of {upstream_name}"
-    else:
-        return "🔄 Mirror repository"
+    return format_repo_description(upstream)
 
 
 def complete_organization(incomplete: str) -> List[Union[str, Tuple[str, str]]]:
@@ -330,19 +319,7 @@ def complete_repository(incomplete: str) -> List[Union[str, Tuple[str, str]]]:
                 if "/" in incomplete:
                     if mirror_name.lower().startswith(incomplete.lower()):
                         upstream = mirror.get("upstream", "")
-                        if upstream:
-                            # Extract upstream name
-                            if "github.com/" in upstream:
-                                upstream_parts = upstream.split("github.com/")[-1].split("/")
-                                if len(upstream_parts) >= 2:
-                                    upstream_name = f"{upstream_parts[0]}/{upstream_parts[1]}"
-                                else:
-                                    upstream_name = upstream
-                            else:
-                                upstream_name = upstream
-                            desc = f"🔄 Mirror of {upstream_name}"
-                        else:
-                            desc = "🔄 Mirror repository (from cache)"
+                        desc = format_repo_description(upstream, "Mirror repository (from cache)")
 
                         # Add if not already in completions
                         if not any(c[0] == mirror_name for c in completions):
@@ -354,19 +331,7 @@ def complete_repository(incomplete: str) -> List[Union[str, Tuple[str, str]]]:
                     )
                     if name_only.lower().startswith(repo_part.lower()):
                         upstream = mirror.get("upstream", "")
-                        if upstream:
-                            # Extract upstream name
-                            if "github.com/" in upstream:
-                                upstream_parts = upstream.split("github.com/")[-1].split("/")
-                                if len(upstream_parts) >= 2:
-                                    upstream_name = f"{upstream_parts[0]}/{upstream_parts[1]}"
-                                else:
-                                    upstream_name = upstream
-                            else:
-                                upstream_name = upstream
-                            desc = f"🔄 Mirror of {upstream_name}"
-                        else:
-                            desc = "🔄 Mirror repository (from cache)"
+                        desc = format_repo_description(upstream, "Mirror repository (from cache)")
 
                         # Add if not already in completions
                         if not any(c[0] == mirror_name for c in completions):
