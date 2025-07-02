@@ -1,6 +1,6 @@
 [project]
 name = "cli-git"
-version = "1.2.0"
+version = "2.0.0"
 description = "A modern Python CLI tool for Git operations"
 readme = "README.md"
 authors = [

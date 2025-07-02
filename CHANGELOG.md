@@ -2,6 +2,59 @@
 
 <!-- version list -->
 
+## v2.0.0 (2025-07-02)
+
+### Bug Fixes
+
+- Resolve GitHub token permission issues for tag sync
+  ([#8](https://github.com/cagojeiger/cli-git/pull/8),
+  [`2915139`](https://github.com/cagojeiger/cli-git/commit/2915139cca8d4796f1c66d6c99d1239083891175))
+
+- Resolve update-mirrors command issues ([#8](https://github.com/cagojeiger/cli-git/pull/8),
+  [`2915139`](https://github.com/cagojeiger/cli-git/commit/2915139cca8d4796f1c66d6c99d1239083891175))
+
+### Chores
+
+- Remove macOS from CI to reduce costs ([#6](https://github.com/cagojeiger/cli-git/pull/6),
+  [`ce62bed`](https://github.com/cagojeiger/cli-git/commit/ce62bed5f53a8b7937c592745a9eed4c4794d142))
+
+### Features
+
+- Add GitHub Personal Access Token support for tag synchronization
+  ([#8](https://github.com/cagojeiger/cli-git/pull/8),
+  [`2915139`](https://github.com/cagojeiger/cli-git/commit/2915139cca8d4796f1c66d6c99d1239083891175))
+
+- Add repository autocompletion and improve update-mirrors UX
+  ([#8](https://github.com/cagojeiger/cli-git/pull/8),
+  [`2915139`](https://github.com/cagojeiger/cli-git/commit/2915139cca8d4796f1c66d6c99d1239083891175))
+
+- Add update-mirrors command for existing mirror migration
+  ([#8](https://github.com/cagojeiger/cli-git/pull/8),
+  [`2915139`](https://github.com/cagojeiger/cli-git/commit/2915139cca8d4796f1c66d6c99d1239083891175))
+
+- Improve update-mirrors command and add token info to info command
+  ([#8](https://github.com/cagojeiger/cli-git/pull/8),
+  [`2915139`](https://github.com/cagojeiger/cli-git/commit/2915139cca8d4796f1c66d6c99d1239083891175))
+
+### Refactoring
+
+- Apply Occam's razor to update-mirrors command ([#8](https://github.com/cagojeiger/cli-git/pull/8),
+  [`2915139`](https://github.com/cagojeiger/cli-git/commit/2915139cca8d4796f1c66d6c99d1239083891175))
+
+- Separate scan functionality from update in update-mirrors command
+  ([#8](https://github.com/cagojeiger/cli-git/pull/8),
+  [`2915139`](https://github.com/cagojeiger/cli-git/commit/2915139cca8d4796f1c66d6c99d1239083891175))
+
+- Simplify update-mirrors command and improve caching
+  ([#8](https://github.com/cagojeiger/cli-git/pull/8),
+  [`2915139`](https://github.com/cagojeiger/cli-git/commit/2915139cca8d4796f1c66d6c99d1239083891175))
+
+### Testing
+
+- Add tests to improve code coverage to 85% ([#8](https://github.com/cagojeiger/cli-git/pull/8),
+  [`2915139`](https://github.com/cagojeiger/cli-git/commit/2915139cca8d4796f1c66d6c99d1239083891175))
+
+
 ## v1.2.0 (2025-06-28)
 
 ### Bug Fixes
