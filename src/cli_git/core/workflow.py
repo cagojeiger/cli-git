@@ -21,6 +21,7 @@ def generate_sync_workflow(upstream_url: str, schedule: str, upstream_default_br
 permissions:
   contents: write
   pull-requests: write
+  workflows: write
 
 jobs:
   sync:
