@@ -100,7 +100,7 @@ class TestCompletion:
         # Should fall back to "mirror-" as default
         assert ("mirror-", "Default prefix") in result
 
-    @patch("cli_git.completion.completers.get_current_username")
+    @patch("cli_git.completion.api.get_current_username")
     @patch("cli_git.completion.completers.ConfigManager")
     @patch("subprocess.run")
     def test_complete_repository_basic(
@@ -160,7 +160,7 @@ class TestCompletion:
         assert ("testuser/mirror-fastmcp", "🔄 Mirror of fastmcp") in result
         assert ("testuser/mirror-typer", "🔄 Mirror repository") in result
 
-    @patch("cli_git.completion.completers.get_current_username")
+    @patch("cli_git.completion.api.get_current_username")
     @patch("cli_git.completion.completers.ConfigManager")
     @patch("subprocess.run")
     def test_complete_repository_with_owner(
@@ -200,7 +200,7 @@ class TestCompletion:
         assert ("anotheruser/mirror-project", "🔄 Forked mirror") in result
 
     @patch("cli_git.completion.completers.ConfigManager")
-    @patch("cli_git.completion.completers.get_current_username")
+    @patch("cli_git.completion.api.get_current_username")
     def test_complete_repository_from_cache(self, mock_get_username, mock_config_manager_class):
         """Test repository completion from cache when API fails."""
         from cli_git.utils.gh import GitHubError
@@ -239,7 +239,7 @@ class TestCompletion:
         assert any("mirror-cached" in r[0] for r in result)
         assert any("from cache" in r[1] for r in result)
 
-    @patch("cli_git.completion.completers.get_current_username")
+    @patch("cli_git.completion.api.get_current_username")
     @patch("cli_git.completion.completers.ConfigManager")
     @patch("subprocess.run")
     def test_complete_repository_with_org(
@@ -288,7 +288,7 @@ class TestCompletion:
         assert ("testuser/mirror-personal", "🔄 Personal mirror") in result
         assert ("myorg/mirror-shared", "🔄 Shared mirror") in result
 
-    @patch("cli_git.completion.completers.get_current_username")
+    @patch("cli_git.completion.api.get_current_username")
     @patch("cli_git.completion.completers.ConfigManager")
     def test_complete_repository_with_scanned_mirrors_cache(
         self, mock_config_manager, mock_get_username
@@ -325,7 +325,7 @@ class TestCompletion:
         assert ("testuser/mirror-cached1", "🔄 Cached mirror 1") in result
         assert ("testuser/mirror-cached2", "🔄 Mirror repository") in result
 
-    @patch("cli_git.completion.completers.get_current_username")
+    @patch("cli_git.completion.api.get_current_username")
     @patch("cli_git.completion.completers.ConfigManager")
     @patch("subprocess.run")
     def test_complete_repository_saves_completion_cache(
@@ -380,7 +380,7 @@ class TestCompletion:
         assert saved_data[1]["nameWithOwner"] == "testuser/mirror-test"
         assert saved_data[1]["is_mirror"] is True
 
-    @patch("cli_git.completion.completers.get_current_username")
+    @patch("cli_git.completion.api.get_current_username")
     @patch("cli_git.completion.completers.ConfigManager")
     def test_complete_repository_uses_completion_cache(
         self, mock_config_manager, mock_get_username
@@ -428,21 +428,21 @@ class TestCompletion:
         assert not any("regular-project" in r[0] for r in result)
 
     def test_get_mirror_description(self):
-        """Test _get_mirror_description helper function."""
-        from cli_git.completion.completers import _get_mirror_description
+        """Test get_mirror_description helper function."""
+        from cli_git.completion.utils import get_mirror_description
 
         # Test with GitHub URL
-        desc = _get_mirror_description("https://github.com/owner/repo")
+        desc = get_mirror_description("https://github.com/owner/repo")
         assert desc == "🔄 Mirror of owner/repo"
 
         # Test with non-GitHub URL
-        desc = _get_mirror_description("https://gitlab.com/owner/repo")
+        desc = get_mirror_description("https://gitlab.com/owner/repo")
         assert desc == "🔄 Mirror of https://gitlab.com/owner/repo"
 
         # Test with empty upstream
-        desc = _get_mirror_description("")
+        desc = get_mirror_description("")
         assert desc == "🔄 Mirror repository"
 
         # Test with complex GitHub URL
-        desc = _get_mirror_description("https://github.com/owner/repo.git")
+        desc = get_mirror_description("https://github.com/owner/repo.git")
         assert desc == "🔄 Mirror of owner/repo"

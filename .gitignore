@@ -185,3 +185,4 @@ ehthumbs_vista.db
 .settings/
 .venv*/
 venv*/
+.docs/
