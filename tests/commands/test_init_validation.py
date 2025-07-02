@@ -41,10 +41,11 @@ class TestInitValidation:
             "preferences": {"default_schedule": "0 0 * * *"},
         }
 
-        # Simulate user input: invalid webhook, then empty (skip), then valid prefix
+        # Simulate user input: invalid webhook, then empty (skip), github token, then valid prefix
         mock_prompt.side_effect = [
             "https://invalid-webhook.com",  # Invalid webhook
             "",  # Skip webhook on retry
+            "",  # Skip GitHub token
             "mirror-",  # Valid prefix
         ]
 
@@ -81,6 +82,7 @@ class TestInitValidation:
         )
         mock_prompt.side_effect = [
             valid_webhook,  # Valid webhook
+            "",  # Skip GitHub token
             "mirror-",  # Valid prefix
         ]
 
@@ -115,6 +117,7 @@ class TestInitValidation:
         # Simulate user input: empty webhook, invalid prefix, then valid prefix
         mock_prompt.side_effect = [
             "",  # Skip webhook
+            "",  # Skip GitHub token
             "my prefix",  # Invalid prefix (contains space)
             "my-prefix-",  # Valid prefix
         ]
@@ -149,6 +152,7 @@ class TestInitValidation:
         long_prefix = "a" * 51  # Too long
         mock_prompt.side_effect = [
             "",  # Skip webhook
+            "",  # Skip GitHub token
             long_prefix,  # Too long prefix
             "short-",  # Valid prefix
         ]
@@ -190,6 +194,7 @@ class TestInitValidation:
         mock_prompt.side_effect = [
             "2",  # Select org2
             "",  # Skip webhook
+            "",  # Skip GitHub token
             "mirror-",  # Default prefix
         ]
         mock_confirm.return_value = True  # Confirm selection

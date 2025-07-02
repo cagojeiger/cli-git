@@ -47,6 +47,7 @@ class ConfigManager:
         github["username"] = ""
         github["default_org"] = ""
         github["slack_webhook_url"] = ""
+        github["github_token"] = ""
         doc["github"] = github
         doc.add(nl())
 

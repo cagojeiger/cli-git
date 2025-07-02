@@ -34,8 +34,8 @@ class TestInitCommand:
             "preferences": {"default_schedule": "0 0 * * *"},
         }
 
-        # Run command with input for prompts (webhook url, prefix)
-        result = runner.invoke(app, ["init"], input="\nmirror-\n")
+        # Run command with input for prompts (webhook url, github token, prefix)
+        result = runner.invoke(app, ["init"], input="\n\nmirror-\n")
 
         # Verify
         assert result.exit_code == 0
@@ -79,7 +79,7 @@ class TestInitCommand:
         mock_check_auth.return_value = True
         mock_get_username.return_value = "testuser"
         mock_get_orgs.return_value = []  # No organizations
-        mock_prompt.side_effect = ["", "mirror-"]  # Slack URL, prefix
+        mock_prompt.side_effect = ["", "", "mirror-"]  # Slack URL, GitHub token, prefix
         mock_manager = MagicMock()
         mock_config_manager.return_value = mock_manager
         mock_manager.get_config.return_value = {
@@ -176,7 +176,7 @@ class TestInitCommand:
                     "preferences": {"default_schedule": "0 0 * * *"},
                 }
 
-                result = runner.invoke(app, ["init"], input="\nmirror-\n")
+                result = runner.invoke(app, ["init"], input="\n\nmirror-\n")
 
         assert result.exit_code == 0
         assert "🔐 GitHub CLI is not authenticated" in result.stdout

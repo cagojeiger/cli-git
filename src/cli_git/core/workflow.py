@@ -156,8 +156,19 @@ jobs:
 
       - name: Sync tags
         if: steps.sync.outputs.has_conflicts == 'false'
+        env:
+          GH_TOKEN: ${{{{ secrets.GH_TOKEN }}}}
         run: |
           echo "Syncing tags..."
+
+          # Configure git to use GH_TOKEN if available
+          if [ -n "$GH_TOKEN" ]; then
+            echo "Using GH_TOKEN for authentication"
+            git config --global url."https://x-access-token:${{GH_TOKEN}}@github.com/".insteadOf "https://github.com/"
+          else
+            echo "Warning: GH_TOKEN not found. Tag sync may fail if tags contain workflow files."
+          fi
+
           git fetch upstream --tags
           git push origin --tags
 
