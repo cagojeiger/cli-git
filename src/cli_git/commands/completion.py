@@ -2,7 +2,9 @@
 
 import os
 import subprocess
+from abc import ABC, abstractmethod
 from pathlib import Path
+from typing import Optional
 
 import typer
 
@@ -24,6 +26,138 @@ def detect_shell() -> str:
         return "unknown"
 
 
+class ShellCompletionHandler(ABC):
+    """Abstract base class for shell completion handlers."""
+
+    @abstractmethod
+    def get_completion_path(self) -> Path:
+        """Get the path where completion should be installed."""
+        pass
+
+    @abstractmethod
+    def install_completion(self, script: str) -> None:
+        """Install the completion script."""
+        pass
+
+    @abstractmethod
+    def get_success_message(self) -> str:
+        """Get success message to display after installation."""
+        pass
+
+
+class BashCompletionHandler(ShellCompletionHandler):
+    """Handler for Bash shell completion."""
+
+    def get_completion_path(self) -> Path:
+        return Path.home() / ".bashrc"
+
+    def install_completion(self, script: str) -> None:
+        completion_file = self.get_completion_path()
+        marker = "# cli-git completion"
+
+        # Check if already installed
+        if completion_file.exists():
+            content = completion_file.read_text()
+            if marker in content:
+                typer.echo("✅ Completion already installed")
+                typer.echo(f"   To update, remove the {marker} section from {completion_file}")
+                return
+
+        # Append to shell config
+        with open(completion_file, "a") as f:
+            f.write(f"\n{marker}\n")
+            f.write(script)
+            f.write(f"\n# End {marker}\n")
+
+    def get_success_message(self) -> str:
+        completion_file = self.get_completion_path()
+        return f"✅ Completion installed to {completion_file}\n   Restart your shell or run: source {completion_file}"
+
+
+class ZshCompletionHandler(ShellCompletionHandler):
+    """Handler for Zsh shell completion."""
+
+    def get_completion_path(self) -> Path:
+        return Path.home() / ".zshrc"
+
+    def install_completion(self, script: str) -> None:
+        completion_file = self.get_completion_path()
+        marker = "# cli-git completion"
+
+        # Check if already installed
+        if completion_file.exists():
+            content = completion_file.read_text()
+            if marker in content:
+                typer.echo("✅ Completion already installed")
+                typer.echo(f"   To update, remove the {marker} section from {completion_file}")
+                return
+
+        # Append to shell config
+        with open(completion_file, "a") as f:
+            f.write(f"\n{marker}\n")
+            f.write(script)
+            f.write(f"\n# End {marker}\n")
+
+    def get_success_message(self) -> str:
+        completion_file = self.get_completion_path()
+        return f"✅ Completion installed to {completion_file}\n   Restart your shell or run: source {completion_file}"
+
+
+class FishCompletionHandler(ShellCompletionHandler):
+    """Handler for Fish shell completion."""
+
+    def get_completion_path(self) -> Path:
+        completion_dir = Path.home() / ".config" / "fish" / "completions"
+        completion_dir.mkdir(parents=True, exist_ok=True)
+        return completion_dir / "cli-git.fish"
+
+    def install_completion(self, script: str) -> None:
+        completion_file = self.get_completion_path()
+        completion_file.write_text(script)
+
+    def get_success_message(self) -> str:
+        completion_file = self.get_completion_path()
+        return f"✅ Completion installed to {completion_file}\n   Completion will be available in new shell sessions"
+
+
+def get_shell_handler(shell: str) -> Optional[ShellCompletionHandler]:
+    """Get the appropriate shell handler for the given shell.
+
+    Args:
+        shell: Shell name (bash, zsh, fish)
+
+    Returns:
+        Shell handler instance or None if shell is not supported
+    """
+    handlers = {
+        "bash": BashCompletionHandler(),
+        "zsh": ZshCompletionHandler(),
+        "fish": FishCompletionHandler(),
+    }
+    return handlers.get(shell)
+
+
+def generate_completion_script(shell: str) -> str:
+    """Generate completion script for the given shell.
+
+    Args:
+        shell: Shell name
+
+    Returns:
+        Completion script content
+
+    Raises:
+        subprocess.CalledProcessError: If script generation fails
+    """
+    result = subprocess.run(
+        ["cli-git", "--show-completion", shell],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return result.stdout
+
+
 def completion_install_command() -> None:
     """Install shell completion for cli-git."""
     shell = detect_shell()
@@ -36,56 +170,21 @@ def completion_install_command() -> None:
 
     typer.echo(f"🔍 Detected shell: {shell}")
 
-    # Use typer's built-in completion installation
-    try:
-        # Get the completion script
-        result = subprocess.run(
-            ["cli-git", "--show-completion", shell],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        completion_script = result.stdout
+    # Get the appropriate handler
+    handler = get_shell_handler(shell)
+    if not handler:
+        typer.echo(f"❌ Unsupported shell: {shell}")
+        raise typer.Exit(1)
 
-        # Determine where to install
-        if shell == "bash":
-            completion_file = Path.home() / ".bashrc"
-            marker = "# cli-git completion"
-        elif shell == "zsh":
-            completion_file = Path.home() / ".zshrc"
-            marker = "# cli-git completion"
-        elif shell == "fish":
-            completion_dir = Path.home() / ".config" / "fish" / "completions"
-            completion_dir.mkdir(parents=True, exist_ok=True)
-            completion_file = completion_dir / "cli-git.fish"
-            marker = None
-        else:
-            raise typer.Exit(1)
+    try:
+        # Generate completion script
+        completion_script = generate_completion_script(shell)
 
         # Install completion
-        if shell in ["bash", "zsh"]:
-            # Check if already installed
-            if completion_file.exists():
-                content = completion_file.read_text()
-                if marker in content:
-                    typer.echo("✅ Completion already installed")
-                    typer.echo(f"   To update, remove the {marker} section from {completion_file}")
-                    return
+        handler.install_completion(completion_script)
 
-            # Append to shell config
-            with open(completion_file, "a") as f:
-                f.write(f"\n{marker}\n")
-                f.write(completion_script)
-                f.write(f"\n# End {marker}\n")
-
-            typer.echo(f"✅ Completion installed to {completion_file}")
-            typer.echo(f"   Restart your shell or run: source {completion_file}")
-
-        elif shell == "fish":
-            # Write completion file
-            completion_file.write_text(completion_script)
-            typer.echo(f"✅ Completion installed to {completion_file}")
-            typer.echo("   Completion will be available in new shell sessions")
+        # Show success message
+        typer.echo(handler.get_success_message())
 
     except subprocess.CalledProcessError as e:
         typer.echo(f"❌ Failed to generate completion: {e}")

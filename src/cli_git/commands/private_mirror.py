@@ -5,7 +5,9 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Annotated, Optional
+
+# Type definitions
+from typing import Annotated, Dict, Optional
 
 import typer
 
@@ -181,6 +183,71 @@ def private_mirror_operation(
     return mirror_url
 
 
+def validate_mirror_inputs(
+    upstream: str, org: Optional[str], schedule: str, prefix: Optional[str]
+) -> None:
+    """Validate all inputs for private mirror command.
+
+    Args:
+        upstream: Upstream repository URL
+        org: Organization name (optional)
+        schedule: Cron schedule for synchronization
+        prefix: Mirror name prefix (optional)
+
+    Raises:
+        ValidationError: If any validation fails
+    """
+    # Validate upstream URL
+    validate_github_url(upstream)
+
+    # Validate organization if provided
+    if org:
+        validate_organization(org)
+
+    # Validate schedule
+    validate_cron_schedule(schedule)
+
+    # Validate prefix if provided
+    if prefix is not None:
+        validate_prefix(prefix)
+
+
+def resolve_mirror_parameters(
+    config: Dict[str, any],
+    repo_name: str,
+    custom_repo: Optional[str],
+    prefix: Optional[str],
+    org: Optional[str],
+) -> tuple[str, str]:
+    """Resolve mirror parameters from config and inputs.
+
+    Args:
+        config: Configuration dictionary
+        repo_name: Extracted repository name
+        custom_repo: Custom repository name (optional)
+        prefix: Mirror prefix (optional)
+        org: Organization name (optional)
+
+    Returns:
+        Tuple of (target_name, organization)
+    """
+    # Get default prefix from config if not specified
+    if prefix is None:
+        prefix = config["preferences"].get("default_prefix", "mirror-")
+
+    # Determine target repository name
+    if custom_repo:
+        target_name = custom_repo  # Custom name overrides prefix
+    else:
+        target_name = f"{prefix}{repo_name}" if prefix else repo_name
+
+    # Use default org from config if not specified
+    if not org and config["github"]["default_org"]:
+        org = config["github"]["default_org"]
+
+    return target_name, org
+
+
 def private_mirror_command(
     upstream: Annotated[str, typer.Argument(help="Upstream repository URL")],
     repo: Annotated[
@@ -222,22 +289,9 @@ def private_mirror_command(
         typer.echo("   Run 'cli-git init' first")
         raise typer.Exit(1)
 
-    # Validate inputs
+    # Validate all inputs
     try:
-        # Validate upstream URL
-        validate_github_url(upstream)
-
-        # Validate organization if provided
-        if org:
-            validate_organization(org)
-
-        # Validate schedule
-        validate_cron_schedule(schedule)
-
-        # Validate prefix if provided
-        if prefix is not None:
-            validate_prefix(prefix)
-
+        validate_mirror_inputs(upstream, org, schedule, prefix)
     except ValidationError as e:
         typer.echo(str(e))
         raise typer.Exit(1)
@@ -249,15 +303,8 @@ def private_mirror_command(
         typer.echo(f"❌ {e}")
         raise typer.Exit(1)
 
-    # Get default prefix from config if not specified
-    if prefix is None:
-        prefix = config["preferences"].get("default_prefix", "mirror-")
-
-    # Determine target repository name
-    if repo:
-        target_name = repo  # Custom name overrides prefix
-    else:
-        target_name = f"{prefix}{repo_name}" if prefix else repo_name
+    # Resolve parameters from config and inputs
+    target_name, org = resolve_mirror_parameters(config, repo_name, repo, prefix, org)
 
     # Validate the final repository name
     try:
@@ -266,14 +313,8 @@ def private_mirror_command(
         typer.echo(str(e))
         raise typer.Exit(1)
 
-    # Use default org from config if not specified
-    if not org and config["github"]["default_org"]:
-        org = config["github"]["default_org"]
-
-    # Get Slack webhook URL from config
+    # Get additional config values
     slack_webhook_url = config["github"].get("slack_webhook_url", "")
-
-    # Get GitHub token from config
     github_token = config["github"].get("github_token", "")
 
     # Get current username
