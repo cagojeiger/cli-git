@@ -136,37 +136,95 @@ def scan_for_mirrors(username: str, org: Optional[str] = None) -> List[Dict[str,
     for owner in owners:
         typer.echo(f"  Scanning {owner}...")
 
-        # Get all repositories
+        # Get all repositories with more details
         result = subprocess.run(
-            ["gh", "repo", "list", owner, "--limit", "1000", "--json", "nameWithOwner,url"],
+            [
+                "gh",
+                "repo",
+                "list",
+                owner,
+                "--limit",
+                "1000",
+                "--json",
+                "nameWithOwner,url,description,isPrivate,updatedAt",
+            ],
             capture_output=True,
             text=True,
         )
 
         if result.returncode != 0:
+            typer.echo(f"    ⚠️  Could not access {owner}'s repositories")
             continue
 
-        repos = json.loads(result.stdout)
+        try:
+            repos = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            typer.echo(f"    ⚠️  Failed to parse repository data for {owner}")
+            continue
+
+        # Counter for progress
+        checked = 0
+        found = 0
 
         for repo in repos:
             repo_name = repo["nameWithOwner"]
+            checked += 1
 
             # Check if mirror-sync.yml exists
             check = subprocess.run(
                 ["gh", "api", f"repos/{repo_name}/contents/.github/workflows/mirror-sync.yml"],
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,  # Suppress stderr for cleaner output
             )
 
             if check.returncode == 0:
-                # This is likely a mirror - try to get upstream URL from workflow
-                # Since we can't read secrets, we'll mark it as a potential mirror
+                found += 1
+                # This is a mirror repository
+                # Try to extract upstream info from workflow content
+                upstream = ""
+                try:
+                    # Get workflow content
+                    workflow_result = subprocess.run(
+                        [
+                            "gh",
+                            "api",
+                            f"repos/{repo_name}/contents/.github/workflows/mirror-sync.yml",
+                            "-q",
+                            ".content",
+                        ],
+                        capture_output=True,
+                        text=True,
+                    )
+                    if workflow_result.returncode == 0:
+                        # Decode base64 content
+                        import base64
+
+                        content = base64.b64decode(workflow_result.stdout.strip()).decode()
+
+                        # Try to extract upstream URL from comments or environment variables
+                        for line in content.split("\n"):
+                            if "UPSTREAM_URL:" in line and "#" in line:
+                                # Look for comments like # UPSTREAM_URL: https://github.com/owner/repo
+                                comment_part = line.split("#", 1)[1].strip()
+                                if "UPSTREAM_URL:" in comment_part:
+                                    upstream = comment_part.split("UPSTREAM_URL:", 1)[1].strip()
+                                    break
+                except Exception:
+                    pass  # If we can't get upstream, that's okay
+
                 mirrors.append(
                     {
                         "mirror": repo["url"],
-                        "upstream": "",  # Will be filled from existing secret
+                        "upstream": upstream,
                         "name": repo_name,
+                        "description": repo.get("description", ""),
+                        "is_private": repo.get("isPrivate", False),
+                        "updated_at": repo.get("updatedAt", ""),
                     }
                 )
+
+        if checked > 0:
+            typer.echo(f"    ✓ Checked {checked} repositories, found {found} mirrors")
 
     return mirrors
 
@@ -320,19 +378,72 @@ def update_mirrors_command(
         typer.echo(f"❌ {e}")
         raise typer.Exit(1)
 
+    # Handle scan option separately - just scan and display, don't update
+    if scan:
+        typer.echo("\n🔍 Scanning GitHub for mirror repositories...")
+        org = config["github"].get("default_org")
+        mirrors = scan_for_mirrors(username, org)
+
+        if not mirrors:
+            typer.echo("\n❌ No mirror repositories found")
+            typer.echo(
+                "\n💡 Make sure you have mirror repositories with .github/workflows/mirror-sync.yml"
+            )
+            raise typer.Exit(0)
+
+        # Display found mirrors
+        typer.echo(f"\n✅ Found {len(mirrors)} mirror repositories:")
+        typer.echo("=" * 70)
+
+        for i, mirror in enumerate(mirrors, 1):
+            mirror_name = mirror.get("name", "Unknown")
+            is_private = mirror.get("is_private", False)
+            description = mirror.get("description", "")
+            updated_at = mirror.get("updated_at", "")
+
+            # Format visibility
+            visibility = "🔒" if is_private else "🌐"
+
+            typer.echo(f"\n  [{i}] {visibility} {mirror_name}")
+
+            # Show description if available
+            if description:
+                typer.echo(f"      📝 {description}")
+
+            # Try to get upstream info
+            upstream = mirror.get("upstream", "")
+            if upstream and upstream != "":
+                typer.echo(f"      🔗 Upstream: {upstream}")
+            else:
+                typer.echo("      🔗 Upstream: (configured via secrets)")
+
+            # Show last updated
+            if updated_at:
+                try:
+                    # Parse and format date
+                    from datetime import datetime
+
+                    dt = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+                    formatted_date = dt.strftime("%Y-%m-%d %H:%M")
+                    typer.echo(f"      🕐 Updated: {formatted_date}")
+                except Exception:
+                    pass
+
+        typer.echo("\n" + "=" * 70)
+        typer.echo("\n💡 To update these mirrors:")
+        typer.echo("   • Update all: cli-git update-mirrors --all")
+        typer.echo("   • Update specific: cli-git update-mirrors --repo <name>")
+        typer.echo("   • Interactive selection: cli-git update-mirrors")
+
+        # Exit after displaying scan results
+        raise typer.Exit(0)
+
     # Find mirrors to update
     typer.echo("\n🔍 Finding mirrors to update...")
 
     if repo:
         # Specific repository
         mirrors = [{"mirror": f"https://github.com/{repo}", "upstream": "", "name": repo}]
-    elif scan:
-        # Scan GitHub for all mirrors
-        org = config["github"].get("default_org")
-        mirrors = scan_for_mirrors(username, org)
-        if not mirrors:
-            typer.echo("No mirror repositories found")
-            raise typer.Exit(0)
     else:
         # Use cached mirrors
         mirrors = config_manager.get_recent_mirrors()

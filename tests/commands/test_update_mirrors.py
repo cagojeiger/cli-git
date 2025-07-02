@@ -231,10 +231,10 @@ class TestUpdateMirrorsCommand:
     @patch("cli_git.commands.update_mirrors.ConfigManager")
     @patch("cli_git.commands.update_mirrors.get_current_username")
     @patch("cli_git.commands.update_mirrors.scan_for_mirrors")
-    def test_scan_for_mirrors(
+    def test_scan_for_mirrors_no_results(
         self, mock_scan, mock_get_username, mock_config_manager, mock_check_auth, runner
     ):
-        """Test scanning GitHub for mirrors."""
+        """Test scanning GitHub for mirrors when none found."""
         mock_check_auth.return_value = True
         mock_get_username.return_value = "testuser"
 
@@ -250,16 +250,77 @@ class TestUpdateMirrorsCommand:
             "preferences": {},
         }
 
-        # Mock scan results
+        # Mock scan results - no mirrors found
         mock_scan.return_value = []
 
         result = runner.invoke(app, ["update-mirrors", "--scan"])
 
         assert result.exit_code == 0
+        assert "Scanning GitHub for mirror repositories" in result.stdout
         assert "No mirror repositories found" in result.stdout
+        assert "Make sure you have mirror repositories" in result.stdout
 
         # Verify scan was called with username and org
         mock_scan.assert_called_once_with("testuser", "testorg")
+
+    @patch("cli_git.commands.update_mirrors.check_gh_auth")
+    @patch("cli_git.commands.update_mirrors.ConfigManager")
+    @patch("cli_git.commands.update_mirrors.get_current_username")
+    @patch("cli_git.commands.update_mirrors.scan_for_mirrors")
+    def test_scan_for_mirrors_with_results(
+        self, mock_scan, mock_get_username, mock_config_manager, mock_check_auth, runner
+    ):
+        """Test scanning GitHub for mirrors when some are found."""
+        mock_check_auth.return_value = True
+        mock_get_username.return_value = "testuser"
+
+        # Mock ConfigManager
+        mock_manager = MagicMock()
+        mock_config_manager.return_value = mock_manager
+        mock_manager.get_config.return_value = {
+            "github": {
+                "username": "testuser",
+                "github_token": "test_token",
+                "default_org": "",
+            },
+            "preferences": {},
+        }
+
+        # Mock scan results - found some mirrors
+        mock_scan.return_value = [
+            {
+                "name": "testuser/mirror-project1",
+                "mirror": "https://github.com/testuser/mirror-project1",
+                "upstream": "https://github.com/upstream/project1",
+                "description": "Mirror of project1",
+                "is_private": False,
+                "updated_at": "2025-01-01T12:00:00Z",
+            },
+            {
+                "name": "testuser/mirror-project2",
+                "mirror": "https://github.com/testuser/mirror-project2",
+                "upstream": "",
+                "description": "",
+                "is_private": True,
+                "updated_at": "2025-01-02T12:00:00Z",
+            },
+        ]
+
+        result = runner.invoke(app, ["update-mirrors", "--scan"])
+
+        assert result.exit_code == 0
+        assert "Found 2 mirror repositories" in result.stdout
+        assert "testuser/mirror-project1" in result.stdout
+        assert "testuser/mirror-project2" in result.stdout
+        assert "Mirror of project1" in result.stdout
+        assert "🔒" in result.stdout  # Private repo indicator
+        assert "🌐" in result.stdout  # Public repo indicator
+        assert "To update these mirrors:" in result.stdout
+        assert "cli-git update-mirrors --all" in result.stdout
+        assert "cli-git update-mirrors --repo" in result.stdout
+
+        # Verify scan was called
+        mock_scan.assert_called_once_with("testuser", "")
 
     @patch("cli_git.commands.update_mirrors.check_gh_auth")
     @patch("cli_git.commands.update_mirrors.ConfigManager")
@@ -387,43 +448,83 @@ class TestUpdateMirrorsCommand:
         from cli_git.commands.update_mirrors import scan_for_mirrors
 
         with patch("subprocess.run") as mock_run:
-            # Mock repo list
-            mock_run.return_value.returncode = 0
-            mock_run.return_value.stdout = json.dumps(
-                [
+            with patch(
+                "cli_git.commands.update_mirrors.typer.echo"
+            ):  # Mock echo to suppress output
+                # First call returns repo list with extended fields
+                repo_list = [
                     {
                         "nameWithOwner": "testuser/mirror-repo",
                         "url": "https://github.com/testuser/mirror-repo",
+                        "description": "A mirror repository",
+                        "isPrivate": False,
+                        "updatedAt": "2025-01-01T12:00:00Z",
                     },
                     {
                         "nameWithOwner": "testuser/regular-repo",
                         "url": "https://github.com/testuser/regular-repo",
+                        "description": "A regular repository",
+                        "isPrivate": True,
+                        "updatedAt": "2025-01-02T12:00:00Z",
                     },
                 ]
-            )
 
-            # First call returns repo list, second checks for workflow (success), third checks for workflow (fail)
-            mock_run.side_effect = [
-                MagicMock(
-                    returncode=0,
-                    stdout=json.dumps(
-                        [
-                            {
-                                "nameWithOwner": "testuser/mirror-repo",
-                                "url": "https://github.com/testuser/mirror-repo",
-                            },
-                            {
-                                "nameWithOwner": "testuser/regular-repo",
-                                "url": "https://github.com/testuser/regular-repo",
-                            },
-                        ]
-                    ),
-                ),
-                MagicMock(returncode=0),  # mirror-repo has workflow
-                MagicMock(returncode=1),  # regular-repo doesn't have workflow
-            ]
+                mock_run.side_effect = [
+                    MagicMock(returncode=0, stdout=json.dumps(repo_list)),  # repo list
+                    MagicMock(returncode=0),  # mirror-repo has workflow
+                    MagicMock(returncode=0, stdout=""),  # workflow content (empty for test)
+                    MagicMock(returncode=1),  # regular-repo doesn't have workflow
+                ]
 
-            mirrors = scan_for_mirrors("testuser")
+                mirrors = scan_for_mirrors("testuser")
 
-            assert len(mirrors) == 1
-            assert mirrors[0]["name"] == "testuser/mirror-repo"
+                assert len(mirrors) == 1
+                assert mirrors[0]["name"] == "testuser/mirror-repo"
+                assert mirrors[0]["description"] == "A mirror repository"
+                assert mirrors[0]["is_private"] is False
+                assert mirrors[0]["updated_at"] == "2025-01-01T12:00:00Z"
+
+    def test_scan_for_mirrors_function_with_org(self):
+        """Test the scan_for_mirrors function with organization."""
+        from cli_git.commands.update_mirrors import scan_for_mirrors
+
+        with patch("subprocess.run") as mock_run:
+            with patch("cli_git.commands.update_mirrors.typer.echo"):  # Mock echo
+                # Mock for user repos
+                user_repos = [
+                    {
+                        "nameWithOwner": "testuser/mirror-personal",
+                        "url": "https://github.com/testuser/mirror-personal",
+                        "description": "Personal mirror",
+                        "isPrivate": False,
+                        "updatedAt": "2025-01-01T12:00:00Z",
+                    },
+                ]
+
+                # Mock for org repos
+                org_repos = [
+                    {
+                        "nameWithOwner": "testorg/mirror-shared",
+                        "url": "https://github.com/testorg/mirror-shared",
+                        "description": "Shared mirror",
+                        "isPrivate": True,
+                        "updatedAt": "2025-01-02T12:00:00Z",
+                    },
+                ]
+
+                mock_run.side_effect = [
+                    # User repos
+                    MagicMock(returncode=0, stdout=json.dumps(user_repos)),
+                    MagicMock(returncode=0),  # mirror-personal has workflow
+                    MagicMock(returncode=0, stdout=""),  # workflow content
+                    # Org repos
+                    MagicMock(returncode=0, stdout=json.dumps(org_repos)),
+                    MagicMock(returncode=0),  # mirror-shared has workflow
+                    MagicMock(returncode=0, stdout=""),  # workflow content
+                ]
+
+                mirrors = scan_for_mirrors("testuser", "testorg")
+
+                assert len(mirrors) == 2
+                assert any(m["name"] == "testuser/mirror-personal" for m in mirrors)
+                assert any(m["name"] == "testorg/mirror-shared" for m in mirrors)
