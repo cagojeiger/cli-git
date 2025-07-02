@@ -12,88 +12,6 @@ class ValidationError(Exception):
     pass
 
 
-# Validation patterns and constants
-GITHUB_URL_PATTERNS = [
-    r"^https://github\.com/[\w.-]+/[\w.-]+/?$",  # HTTPS URL
-    r"^git@github\.com:[\w.-]+/[\w.-]+\.git$",  # SSH URL
-    r"^github\.com/[\w.-]+/[\w.-]+/?$",  # Short form
-]
-
-REPO_NAME_PATTERN = r"^[a-zA-Z0-9._-]+$"
-PREFIX_PATTERN = r"^[a-zA-Z0-9_-]+$"
-SLACK_WEBHOOK_PATTERN = r"^https://hooks\.slack\.com/services/[A-Z0-9]+/[A-Z0-9]+/[a-zA-Z0-9]+$"
-
-RESERVED_REPO_NAMES = ["..", ".", "con", "prn", "aux", "nul"]
-
-# Cron field validation ranges
-CRON_FIELD_RANGES = {
-    "minute": (0, 59),
-    "hour": (0, 23),
-    "day": (1, 31),
-    "month": (1, 12),
-    "weekday": (0, 7),
-}
-
-
-def _validate_with_pattern(value: str, patterns: list, error_message: str) -> str:
-    """Generic pattern validation helper.
-
-    Args:
-        value: Value to validate
-        patterns: List of regex patterns to match against
-        error_message: Error message to show on validation failure
-
-    Returns:
-        The value if valid
-
-    Raises:
-        ValidationError: If value doesn't match any pattern
-    """
-    if not any(re.match(pattern, value) for pattern in patterns):
-        raise ValidationError(error_message)
-    return value
-
-
-def _validate_length(value: str, max_length: int, field_name: str) -> str:
-    """Generic length validation helper.
-
-    Args:
-        value: Value to validate
-        max_length: Maximum allowed length
-        field_name: Name of the field for error messages
-
-    Returns:
-        The value if valid
-
-    Raises:
-        ValidationError: If value is too long
-    """
-    if len(value) > max_length:
-        raise ValidationError(
-            f"❌ {field_name} too long: {len(value)} characters (max {max_length})"
-        )
-    return value
-
-
-def _validate_not_reserved(value: str, reserved_list: list, field_name: str) -> str:
-    """Generic reserved name validation helper.
-
-    Args:
-        value: Value to validate
-        reserved_list: List of reserved names
-        field_name: Name of the field for error messages
-
-    Returns:
-        The value if valid
-
-    Raises:
-        ValidationError: If value is reserved
-    """
-    if value.lower() in reserved_list:
-        raise ValidationError(f"❌ {field_name} is reserved: '{value}'")
-    return value
-
-
 def validate_organization(org: Optional[str]) -> Optional[str]:
     """Validate that the organization exists and user has access.
 
@@ -144,14 +62,32 @@ def validate_cron_schedule(schedule: str) -> str:
             "   Example: '0 0 * * *' (daily at midnight)"
         )
 
-    # Validate each field
-    field_names = ["minute", "hour", "day", "month", "weekday"]
-    for field_name, field_value in zip(field_names, fields):
-        min_val, max_val = CRON_FIELD_RANGES[field_name]
-        if not _validate_cron_field(field_value, min_val, max_val):
-            raise ValidationError(
-                f"❌ Invalid {field_name} field: '{field_value}' (must be {min_val}-{max_val})"
-            )
+    # Validate each field range
+    try:
+        minute, hour, day, month, weekday = fields
+
+        # Validate minute (0-59)
+        if not _validate_cron_field(minute, 0, 59):
+            raise ValidationError(f"❌ Invalid minute field: '{minute}' (must be 0-59)")
+
+        # Validate hour (0-23)
+        if not _validate_cron_field(hour, 0, 23):
+            raise ValidationError(f"❌ Invalid hour field: '{hour}' (must be 0-23)")
+
+        # Validate day (1-31)
+        if not _validate_cron_field(day, 1, 31):
+            raise ValidationError(f"❌ Invalid day field: '{day}' (must be 1-31)")
+
+        # Validate month (1-12)
+        if not _validate_cron_field(month, 1, 12):
+            raise ValidationError(f"❌ Invalid month field: '{month}' (must be 1-12)")
+
+        # Validate weekday (0-7, where 0 and 7 are Sunday)
+        if not _validate_cron_field(weekday, 0, 7):
+            raise ValidationError(f"❌ Invalid weekday field: '{weekday}' (must be 0-7)")
+
+    except ValueError as e:
+        raise ValidationError(f"❌ Invalid cron schedule: {e}")
 
     return schedule
 
@@ -172,64 +108,52 @@ def _validate_cron_field(field: str, min_val: int, max_val: int) -> bool:
 
     # Handle step values (*/n or n-m/s)
     if "/" in field:
-        return _validate_cron_step_field(field, min_val, max_val)
+        parts = field.split("/")
+        if len(parts) != 2:
+            return False
+
+        base, step_str = parts
+        try:
+            step = int(step_str)
+            if step <= 0:
+                return False
+        except ValueError:
+            return False
+
+        # Base can be * or range
+        if base == "*":
+            return True
+        elif "-" in base:
+            # Range with step (e.g., 0-59/5)
+            try:
+                start, end = base.split("-")
+                start_val = int(start)
+                end_val = int(end)
+                return min_val <= start_val <= end_val <= max_val
+            except ValueError:
+                return False
+        else:
+            return False
 
     # Handle ranges (n-m)
     if "-" in field:
-        return _validate_cron_range_field(field, min_val, max_val)
+        try:
+            start, end = field.split("-")
+            start_val = int(start)
+            end_val = int(end)
+            return min_val <= start_val <= end_val <= max_val
+        except ValueError:
+            return False
 
     # Handle lists (n,m,o)
     if "," in field:
-        return _validate_cron_list_field(field, min_val, max_val)
+        try:
+            values = [int(v) for v in field.split(",")]
+            return all(min_val <= v <= max_val for v in values)
+        except ValueError:
+            return False
 
     # Handle single values
-    return _validate_cron_single_value(field, min_val, max_val)
-
-
-def _validate_cron_step_field(field: str, min_val: int, max_val: int) -> bool:
-    """Validate cron step field (*/n or n-m/s)."""
-    parts = field.split("/")
-    if len(parts) != 2:
-        return False
-
-    base, step_str = parts
-    try:
-        step = int(step_str)
-        if step <= 0:
-            return False
-    except ValueError:
-        return False
-
-    if base == "*":
-        return True
-    elif "-" in base:
-        return _validate_cron_range_field(base, min_val, max_val)
-
-    return False
-
-
-def _validate_cron_range_field(field: str, min_val: int, max_val: int) -> bool:
-    """Validate cron range field (n-m)."""
-    try:
-        start, end = field.split("-")
-        start_val = int(start)
-        end_val = int(end)
-        return min_val <= start_val <= end_val <= max_val
-    except ValueError:
-        return False
-
-
-def _validate_cron_list_field(field: str, min_val: int, max_val: int) -> bool:
-    """Validate cron list field (n,m,o)."""
-    try:
-        values = [int(v) for v in field.split(",")]
-        return all(min_val <= v <= max_val for v in values)
-    except ValueError:
-        return False
-
-
-def _validate_cron_single_value(field: str, min_val: int, max_val: int) -> bool:
-    """Validate single cron value."""
     try:
         value = int(field)
         return min_val <= value <= max_val
@@ -249,15 +173,23 @@ def validate_github_url(url: str) -> str:
     Raises:
         ValidationError: If URL format is invalid
     """
-    return _validate_with_pattern(
-        url,
-        GITHUB_URL_PATTERNS,
-        f"❌ Invalid GitHub repository URL: '{url}'\n"
-        "   Expected format:\n"
-        "   - https://github.com/owner/repo\n"
-        "   - git@github.com:owner/repo.git\n"
-        "   - github.com/owner/repo",
-    )
+    # GitHub URL patterns
+    patterns = [
+        r"^https://github\.com/[\w.-]+/[\w.-]+/?$",  # HTTPS URL
+        r"^git@github\.com:[\w.-]+/[\w.-]+\.git$",  # SSH URL
+        r"^github\.com/[\w.-]+/[\w.-]+/?$",  # Short form
+    ]
+
+    if not any(re.match(pattern, url) for pattern in patterns):
+        raise ValidationError(
+            f"❌ Invalid GitHub repository URL: '{url}'\n"
+            "   Expected format:\n"
+            "   - https://github.com/owner/repo\n"
+            "   - git@github.com:owner/repo.git\n"
+            "   - github.com/owner/repo"
+        )
+
+    return url
 
 
 def validate_repository_name(name: str) -> str:
@@ -272,26 +204,28 @@ def validate_repository_name(name: str) -> str:
     Raises:
         ValidationError: If name is invalid
     """
+    # GitHub repository name rules
     if not name:
         raise ValidationError("❌ Repository name cannot be empty")
 
-    # Validate length
-    _validate_length(name, 100, "Repository name")
+    if len(name) > 100:
+        raise ValidationError(f"❌ Repository name too long: {len(name)} characters (max 100)")
 
-    # Check reserved names
-    _validate_not_reserved(name, RESERVED_REPO_NAMES, "Repository name")
+    # Reserved names (check first)
+    reserved_names = ["..", ".", "con", "prn", "aux", "nul"]
+    if name.lower() in reserved_names:
+        raise ValidationError(f"❌ Repository name is reserved: '{name}'")
 
     # Must start with alphanumeric
     if not re.match(r"^[a-zA-Z0-9]", name):
         raise ValidationError(f"❌ Repository name must start with a letter or number: '{name}'")
 
-    # Validate character pattern
-    _validate_with_pattern(
-        name,
-        [REPO_NAME_PATTERN],
-        f"❌ Repository name contains invalid characters: '{name}'\n"
-        "   Allowed: letters, numbers, dash (-), underscore (_), period (.)",
-    )
+    # Can only contain alphanumeric, dash, underscore, and period
+    if not re.match(r"^[a-zA-Z0-9._-]+$", name):
+        raise ValidationError(
+            f"❌ Repository name contains invalid characters: '{name}'\n"
+            "   Allowed: letters, numbers, dash (-), underscore (_), period (.)"
+        )
 
     # Cannot end with .git
     if name.endswith(".git"):
@@ -313,18 +247,19 @@ def validate_prefix(prefix: str) -> str:
         ValidationError: If prefix is invalid
     """
     if not prefix:
-        return prefix  # Empty prefix is valid
+        # Empty prefix is valid
+        return prefix
 
-    # Validate length
-    _validate_length(prefix, 50, "Prefix")
+    # Prefix should follow repository name rules but can end with dash
+    if len(prefix) > 50:
+        raise ValidationError(f"❌ Prefix too long: {len(prefix)} characters (max 50)")
 
-    # Validate character pattern
-    _validate_with_pattern(
-        prefix,
-        [PREFIX_PATTERN],
-        f"❌ Prefix contains invalid characters: '{prefix}'\n"
-        "   Allowed: letters, numbers, dash (-), underscore (_)",
-    )
+    # Can only contain alphanumeric, dash, underscore
+    if not re.match(r"^[a-zA-Z0-9_-]+$", prefix):
+        raise ValidationError(
+            f"❌ Prefix contains invalid characters: '{prefix}'\n"
+            "   Allowed: letters, numbers, dash (-), underscore (_)"
+        )
 
     return prefix
 
@@ -342,11 +277,16 @@ def validate_slack_webhook_url(url: str) -> str:
         ValidationError: If URL format is invalid
     """
     if not url:
-        return url  # Empty is valid (optional)
+        # Empty is valid (optional)
+        return url
 
-    return _validate_with_pattern(
-        url,
-        [SLACK_WEBHOOK_PATTERN],
-        "❌ Invalid Slack webhook URL format\n"
-        "   Expected: https://hooks.slack.com/services/XXXXXXXXX/XXXXXXXXX/XXXXXXXXXXXXXXXXXXXXXXXX",
-    )
+    # Slack webhook URL pattern
+    pattern = r"^https://hooks\.slack\.com/services/[A-Z0-9]+/[A-Z0-9]+/[a-zA-Z0-9]+$"
+
+    if not re.match(pattern, url):
+        raise ValidationError(
+            "❌ Invalid Slack webhook URL format\n"
+            "   Expected: https://hooks.slack.com/services/XXXXXXXXX/XXXXXXXXX/XXXXXXXXXXXXXXXXXXXXXXXX"
+        )
+
+    return url

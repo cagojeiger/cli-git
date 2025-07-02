@@ -60,178 +60,6 @@ def clean_github_directory(repo_path: Path) -> bool:
         return False
 
 
-def _clone_and_clean_repo(upstream_url: str, target_name: str, temp_dir: str) -> Path:
-    """Clone repository and clean .github directory.
-
-    Args:
-        upstream_url: URL of the upstream repository
-        target_name: Name for the mirror repository
-        temp_dir: Temporary directory path
-
-    Returns:
-        Path to the cloned repository
-    """
-    repo_path = Path(temp_dir) / target_name
-    typer.echo("  ✓ Cloning repository")
-    run_git_command(f"clone {upstream_url} {repo_path}")
-
-    # Change to repo directory
-    os.chdir(repo_path)
-
-    # Clean .github directory
-    typer.echo("  ✓ Removing original .github directory")
-    github_cleaned = clean_github_directory(repo_path)
-
-    # Commit the changes if .github was removed
-    if github_cleaned:
-        run_git_command("add -A")
-        run_git_command('commit -m "Remove original .github directory"')
-
-    return repo_path
-
-
-def _create_mirror_repo(target_name: str, username: str, org: Optional[str] = None) -> str:
-    """Create private mirror repository on GitHub.
-
-    Args:
-        target_name: Name for the mirror repository
-        username: GitHub username
-        org: Organization name (optional)
-
-    Returns:
-        URL of the created mirror repository
-    """
-    typer.echo(f"  ✓ Creating private repository: {org or username}/{target_name}")
-    return create_private_repo(target_name, org=org)
-
-
-def _push_code(mirror_url: str) -> None:
-    """Push all branches and tags to mirror repository.
-
-    Args:
-        mirror_url: URL of the mirror repository
-    """
-    # Update remotes
-    run_git_command("remote rename origin upstream")
-    run_git_command(f"remote add origin {mirror_url}")
-
-    # Push all branches and tags
-    typer.echo("  ✓ Pushing branches and tags")
-    run_git_command("push origin --all")
-    run_git_command("push origin --tags")
-
-
-def _setup_sync_workflow(
-    repo_path: Path,
-    upstream_url: str,
-    schedule: str,
-    target_name: str,
-    username: str,
-    org: Optional[str] = None,
-    github_token: Optional[str] = None,
-    slack_webhook_url: Optional[str] = None,
-) -> None:
-    """Setup automatic synchronization workflow.
-
-    Args:
-        repo_path: Path to the repository
-        upstream_url: URL of the upstream repository
-        schedule: Cron schedule for synchronization
-        target_name: Name for the mirror repository
-        username: GitHub username
-        org: Organization name (optional)
-        github_token: GitHub Personal Access Token (optional)
-        slack_webhook_url: Slack webhook URL (optional)
-    """
-    # Get upstream default branch
-    typer.echo("  ✓ Getting upstream default branch")
-    upstream_default_branch = get_upstream_default_branch(upstream_url)
-
-    # Create workflow file
-    typer.echo(f"  ✓ Setting up automatic sync ({schedule})")
-    workflow_dir = repo_path / ".github" / "workflows"
-    workflow_dir.mkdir(parents=True, exist_ok=True)
-
-    workflow_content = generate_sync_workflow(upstream_url, schedule, upstream_default_branch)
-    workflow_file = workflow_dir / "mirror-sync.yml"
-    workflow_file.write_text(workflow_content)
-
-    # Commit and push workflow
-    run_git_command("add .github/workflows/mirror-sync.yml")
-    commit_msg = "Add automatic mirror sync workflow"
-    run_git_command(f'commit -m "{commit_msg}"')
-
-    # Push workflow to repository
-    _push_workflow_to_repo()
-
-    # Add repository secrets
-    _add_repository_secrets(
-        target_name,
-        username,
-        org,
-        upstream_url,
-        upstream_default_branch,
-        github_token,
-        slack_webhook_url,
-    )
-
-
-def _push_workflow_to_repo() -> None:
-    """Push workflow file to the repository."""
-    try:
-        default_branch = get_default_branch(Path.cwd())
-        run_git_command(f"push origin {default_branch}")
-    except subprocess.CalledProcessError:
-        # Fallback to common branch names if detection fails
-        for branch in ["main", "master"]:
-            try:
-                run_git_command(f"push origin {branch}")
-                break
-            except subprocess.CalledProcessError:
-                continue
-        else:
-            # If all fails, just push current branch
-            run_git_command("push origin HEAD")
-
-
-def _add_repository_secrets(
-    target_name: str,
-    username: str,
-    org: Optional[str],
-    upstream_url: str,
-    upstream_default_branch: str,
-    github_token: Optional[str],
-    slack_webhook_url: Optional[str],
-) -> None:
-    """Add secrets to the repository.
-
-    Args:
-        target_name: Name for the mirror repository
-        username: GitHub username
-        org: Organization name (optional)
-        upstream_url: URL of the upstream repository
-        upstream_default_branch: Default branch of upstream
-        github_token: GitHub Personal Access Token (optional)
-        slack_webhook_url: Slack webhook URL (optional)
-    """
-    repo_full_name = f"{org or username}/{target_name}"
-    add_repo_secret(repo_full_name, "UPSTREAM_URL", upstream_url)
-    add_repo_secret(repo_full_name, "UPSTREAM_DEFAULT_BRANCH", upstream_default_branch)
-
-    # Add GitHub token if available
-    if github_token:
-        add_repo_secret(repo_full_name, "GH_TOKEN", github_token)
-        typer.echo("  ✓ GitHub token added for tag synchronization")
-    else:
-        typer.echo(
-            "  ⚠️  No GitHub token provided. Tag sync may fail if tags contain workflow files."
-        )
-
-    # Add Slack webhook secret if provided
-    if slack_webhook_url:
-        add_repo_secret(repo_full_name, "SLACK_WEBHOOK_URL", slack_webhook_url)
-
-
 def private_mirror_operation(
     upstream_url: str,
     target_name: str,
@@ -258,27 +86,91 @@ def private_mirror_operation(
         URL of the created mirror repository
     """
     with TemporaryDirectory() as temp_dir:
-        # Step 1: Clone and clean repository
-        repo_path = _clone_and_clean_repo(upstream_url, target_name, temp_dir)
+        # Clone the repository
+        repo_path = Path(temp_dir) / target_name
+        typer.echo("  ✓ Cloning repository")
+        run_git_command(f"clone {upstream_url} {repo_path}")
 
-        # Step 2: Create mirror repository
-        mirror_url = _create_mirror_repo(target_name, username, org)
+        # Change to repo directory
+        os.chdir(repo_path)
 
-        # Step 3: Push code to mirror
-        _push_code(mirror_url)
+        # Clean .github directory
+        typer.echo("  ✓ Removing original .github directory")
+        github_cleaned = clean_github_directory(repo_path)
 
-        # Step 4: Setup synchronization if not disabled
+        # Commit the changes if .github was removed
+        if github_cleaned:
+            run_git_command("add -A")
+            run_git_command('commit -m "Remove original .github directory"')
+
+        # Create private repository
+        typer.echo(f"  ✓ Creating private repository: {org or username}/{target_name}")
+        mirror_url = create_private_repo(target_name, org=org)
+
+        # Update remotes
+        run_git_command("remote rename origin upstream")
+        run_git_command(f"remote add origin {mirror_url}")
+
+        # Push all branches and tags
+        typer.echo("  ✓ Pushing branches and tags")
+        run_git_command("push origin --all")
+        run_git_command("push origin --tags")
+
         if not no_sync:
-            _setup_sync_workflow(
-                repo_path,
-                upstream_url,
-                schedule,
-                target_name,
-                username,
-                org,
-                github_token,
-                slack_webhook_url,
+            # Get upstream default branch
+            typer.echo("  ✓ Getting upstream default branch")
+            upstream_default_branch = get_upstream_default_branch(upstream_url)
+
+            # Create workflow file
+            typer.echo(f"  ✓ Setting up automatic sync ({schedule})")
+            workflow_dir = repo_path / ".github" / "workflows"
+            workflow_dir.mkdir(parents=True, exist_ok=True)
+
+            workflow_content = generate_sync_workflow(
+                upstream_url, schedule, upstream_default_branch
             )
+            workflow_file = workflow_dir / "mirror-sync.yml"
+            workflow_file.write_text(workflow_content)
+
+            # Commit and push workflow
+            run_git_command("add .github/workflows/mirror-sync.yml")
+            # Commit message for sync workflow
+            commit_msg = "Add automatic mirror sync workflow"
+            run_git_command(f'commit -m "{commit_msg}"')
+
+            # Get the default branch and push to it
+            try:
+                default_branch = get_default_branch(repo_path)
+                run_git_command(f"push origin {default_branch}")
+            except subprocess.CalledProcessError:
+                # Fallback to common branch names if detection fails
+                for branch in ["main", "master"]:
+                    try:
+                        run_git_command(f"push origin {branch}")
+                        break
+                    except subprocess.CalledProcessError:
+                        continue
+                else:
+                    # If all fails, just push current branch
+                    run_git_command("push origin HEAD")
+
+            # Add secrets
+            repo_full_name = f"{org or username}/{target_name}"
+            add_repo_secret(repo_full_name, "UPSTREAM_URL", upstream_url)
+            add_repo_secret(repo_full_name, "UPSTREAM_DEFAULT_BRANCH", upstream_default_branch)
+
+            # Add GitHub token if available
+            if github_token:
+                add_repo_secret(repo_full_name, "GH_TOKEN", github_token)
+                typer.echo("  ✓ GitHub token added for tag synchronization")
+            else:
+                typer.echo(
+                    "  ⚠️  No GitHub token provided. Tag sync may fail if tags contain workflow files."
+                )
+
+            # Add Slack webhook secret if provided
+            if slack_webhook_url:
+                add_repo_secret(repo_full_name, "SLACK_WEBHOOK_URL", slack_webhook_url)
 
     return mirror_url
 
