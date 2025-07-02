@@ -1,5 +1,6 @@
 """Initialize user configuration for cli-git."""
 
+from dataclasses import dataclass
 from typing import Annotated
 
 import typer
@@ -16,7 +17,16 @@ from cli_git.utils.gh import (
 )
 from cli_git.utils.validators import ValidationError, validate_prefix, validate_slack_webhook_url
 
-# Type definitions
+
+@dataclass
+class InitConfig:
+    """Configuration data for cli-git initialization."""
+
+    username: str
+    default_org: str = ""
+    slack_webhook_url: str = ""
+    github_token: str = ""
+    default_prefix: str = "mirror-"
 
 
 def mask_webhook_url(url: str) -> str:
@@ -198,70 +208,110 @@ def collect_mirror_prefix() -> str:
             typer.echo(f"   {e}")
 
 
-def display_success_message(
-    username: str, default_org: str, slack_webhook_url: str, github_token: str, default_prefix: str
-) -> None:
-    """Display success message with configuration summary."""
+def collect_init_inputs(username: str) -> InitConfig:
+    """Collect all initialization inputs from user.
+
+    Args:
+        username: GitHub username
+
+    Returns:
+        InitConfig with all collected data
+    """
+    return InitConfig(
+        username=username,
+        default_org=collect_organization_info(username),
+        slack_webhook_url=collect_slack_webhook(),
+        github_token=collect_github_token(),
+        default_prefix=collect_mirror_prefix(),
+    )
+
+
+def display_success_message(config: InitConfig) -> None:
+    """Display success message with configuration summary.
+
+    Args:
+        config: InitConfig with all configuration data
+    """
     typer.echo()
     typer.echo("✅ Configuration initialized successfully!")
-    typer.echo(f"   GitHub username: {username}")
-    if default_org:
-        typer.echo(f"   Default organization: {default_org}")
-    if slack_webhook_url:
-        typer.echo(f"   Slack webhook: {mask_webhook_url(slack_webhook_url)}")
-    if github_token:
-        typer.echo(f"   GitHub token: {mask_token(github_token)}")
-    typer.echo(f"   Mirror prefix: {default_prefix}")
+    typer.echo(f"   GitHub username: {config.username}")
+    if config.default_org:
+        typer.echo(f"   Default organization: {config.default_org}")
+    if config.slack_webhook_url:
+        typer.echo(f"   Slack webhook: {mask_webhook_url(config.slack_webhook_url)}")
+    if config.github_token:
+        typer.echo(f"   GitHub token: {mask_token(config.github_token)}")
+    typer.echo(f"   Mirror prefix: {config.default_prefix}")
     typer.echo()
     typer.echo("Next steps:")
     typer.echo("- Run 'cli-git info' to see your configuration")
     typer.echo("- Run 'cli-git private-mirror <repo-url>' to create your first mirror")
 
 
-def init_command(
-    force: Annotated[bool, typer.Option("--force", "-f", help="Force reinitialization")] = False,
-) -> None:
-    """Initialize cli-git configuration with GitHub account information."""
-    # Ensure GitHub authentication
-    ensure_github_auth()
+def check_existing_config(config_manager: ConfigManager, force: bool) -> bool:
+    """Check if configuration already exists.
 
-    # Get current GitHub username
-    try:
-        username = get_current_username()
-    except GitHubError as e:
-        typer.echo(f"❌ {e}")
-        raise typer.Exit(1)
+    Args:
+        config_manager: ConfigManager instance
+        force: Whether to force reinitialization
 
-    # Initialize config manager
-    config_manager = ConfigManager()
+    Returns:
+        True if should continue with initialization, False otherwise
+    """
     config = config_manager.get_config()
-
-    # Check if already initialized
     if config["github"]["username"] and not force:
         typer.echo("⚠️  Configuration already exists")
         typer.echo(f"   Current user: {config['github']['username']}")
         if config["github"]["default_org"]:
             typer.echo(f"   Default org: {config['github']['default_org']}")
         typer.echo("   Use --force to reinitialize")
-        return
+        return False
+    return True
 
-    # Collect all configuration inputs
-    default_org = collect_organization_info(username)
-    slack_webhook_url = collect_slack_webhook()
-    github_token = collect_github_token()
-    default_prefix = collect_mirror_prefix()
 
-    # Update configuration
+def save_config(config_manager: ConfigManager, config: InitConfig) -> None:
+    """Save configuration to file.
+
+    Args:
+        config_manager: ConfigManager instance
+        config: InitConfig to save
+    """
     updates = {
         "github": {
-            "username": username,
-            "default_org": default_org,
-            "slack_webhook_url": slack_webhook_url,
-            "github_token": github_token,
+            "username": config.username,
+            "default_org": config.default_org,
+            "slack_webhook_url": config.slack_webhook_url,
+            "github_token": config.github_token,
         },
-        "preferences": {"default_prefix": default_prefix},
+        "preferences": {"default_prefix": config.default_prefix},
     }
     config_manager.update_config(updates)
 
-    # Display success message
-    display_success_message(username, default_org, slack_webhook_url, github_token, default_prefix)
+
+def init_command(
+    force: Annotated[bool, typer.Option("--force", "-f", help="Force reinitialization")] = False,
+) -> None:
+    """Initialize cli-git configuration with GitHub account information."""
+    # Step 1: Ensure GitHub authentication
+    ensure_github_auth()
+
+    # Step 2: Get current GitHub username
+    try:
+        username = get_current_username()
+    except GitHubError as e:
+        typer.echo(f"❌ {e}")
+        raise typer.Exit(1)
+
+    # Step 3: Check existing configuration
+    config_manager = ConfigManager()
+    if not check_existing_config(config_manager, force):
+        return
+
+    # Step 4: Collect all inputs
+    config = collect_init_inputs(username)
+
+    # Step 5: Save configuration
+    save_config(config_manager, config)
+
+    # Step 6: Display success message
+    display_success_message(config)

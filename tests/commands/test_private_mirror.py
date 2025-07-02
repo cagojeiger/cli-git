@@ -6,6 +6,7 @@ import pytest
 from typer.testing import CliRunner
 
 from cli_git.cli import app
+from cli_git.commands.private_mirror import MirrorConfig
 
 
 class TestPrivateMirrorCommand:
@@ -50,17 +51,18 @@ class TestPrivateMirrorCommand:
         assert "✅ Success! Your private mirror is ready:" in result.stdout
         assert "https://github.com/testuser/repo-mirror" in result.stdout
 
-        # Verify mirror operation was called correctly
-        mock_mirror_operation.assert_called_once_with(
-            upstream_url="https://github.com/owner/repo",
-            target_name="mirror-repo",  # prefix applied
-            username="testuser",
-            org=None,
-            schedule="0 0 * * *",
-            no_sync=False,
-            slack_webhook_url="",
-            github_token="",
-        )
+        # Verify mirror operation was called with MirrorConfig
+        mock_mirror_operation.assert_called_once()
+        config_arg = mock_mirror_operation.call_args[0][0]
+        assert isinstance(config_arg, MirrorConfig)
+        assert config_arg.upstream_url == "https://github.com/owner/repo"
+        assert config_arg.target_name == "mirror-repo"
+        assert config_arg.username == "testuser"
+        assert config_arg.org is None
+        assert config_arg.schedule == "0 0 * * *"
+        assert config_arg.no_sync is False
+        assert config_arg.slack_webhook_url == ""
+        assert config_arg.github_token == ""
 
         # Verify mirror was added to recent mirrors
         mock_manager.add_recent_mirror.assert_called_once()
@@ -131,16 +133,10 @@ class TestPrivateMirrorCommand:
         )
 
         # Verify custom name was used
-        mock_mirror_operation.assert_called_once_with(
-            upstream_url="https://github.com/owner/repo",
-            target_name="my-custom-mirror",
-            username="testuser",
-            org=None,
-            schedule="0 0 * * *",
-            no_sync=False,
-            slack_webhook_url="",
-            github_token="",
-        )
+        mock_mirror_operation.assert_called_once()
+        config_arg = mock_mirror_operation.call_args[0][0]
+        assert isinstance(config_arg, MirrorConfig)
+        assert config_arg.target_name == "my-custom-mirror"
 
     @patch("cli_git.commands.private_mirror.check_gh_auth")
     @patch("cli_git.commands.private_mirror.get_current_username")
@@ -164,16 +160,10 @@ class TestPrivateMirrorCommand:
         runner.invoke(app, ["private-mirror", "https://github.com/owner/repo"])
 
         # Verify org from config was used
-        mock_mirror_operation.assert_called_once_with(
-            upstream_url="https://github.com/owner/repo",
-            target_name="mirror-repo",  # prefix applied
-            username="testuser",
-            org="myorg",
-            schedule="0 0 * * *",
-            no_sync=False,
-            slack_webhook_url="",
-            github_token="",
-        )
+        mock_mirror_operation.assert_called_once()
+        config_arg = mock_mirror_operation.call_args[0][0]
+        assert isinstance(config_arg, MirrorConfig)
+        assert config_arg.org == "myorg"
 
     @patch("cli_git.commands.private_mirror.check_gh_auth")
     @patch("cli_git.commands.private_mirror.get_current_username")

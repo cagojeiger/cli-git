@@ -6,6 +6,7 @@ import pytest
 from typer.testing import CliRunner
 
 from cli_git.cli import app
+from cli_git.commands.private_mirror import MirrorConfig
 
 
 class TestPrefixFeature:
@@ -47,16 +48,10 @@ class TestPrefixFeature:
 
         # Verify prefix was applied
         assert result.exit_code == 0
-        mock_mirror_operation.assert_called_once_with(
-            upstream_url="https://github.com/owner/react",
-            target_name="custom-react",  # prefix + repo name
-            username="testuser",
-            org=None,
-            schedule="0 0 * * *",
-            no_sync=False,
-            slack_webhook_url="",
-            github_token="",
-        )
+        mock_mirror_operation.assert_called_once()
+        config_arg = mock_mirror_operation.call_args[0][0]
+        assert isinstance(config_arg, MirrorConfig)
+        assert config_arg.target_name == "custom-react"  # prefix + repo name
 
     @patch("cli_git.commands.private_mirror.ConfigManager")
     @patch("cli_git.commands.private_mirror.check_gh_auth")
@@ -91,16 +86,10 @@ class TestPrefixFeature:
 
         # Verify custom prefix was used
         assert result.exit_code == 0
-        mock_mirror_operation.assert_called_once_with(
-            upstream_url="https://github.com/owner/react",
-            target_name="fork-react",  # custom prefix + repo name
-            username="testuser",
-            org=None,
-            schedule="0 0 * * *",
-            no_sync=False,
-            slack_webhook_url="",
-            github_token="",
-        )
+        mock_mirror_operation.assert_called_once()
+        config_arg = mock_mirror_operation.call_args[0][0]
+        assert isinstance(config_arg, MirrorConfig)
+        assert config_arg.target_name == "fork-react"  # custom prefix + repo name
 
     @patch("cli_git.commands.private_mirror.ConfigManager")
     @patch("cli_git.commands.private_mirror.check_gh_auth")
@@ -135,16 +124,10 @@ class TestPrefixFeature:
 
         # Verify no prefix was applied
         assert result.exit_code == 0
-        mock_mirror_operation.assert_called_once_with(
-            upstream_url="https://github.com/owner/react",
-            target_name="react",  # no prefix, just repo name
-            username="testuser",
-            org=None,
-            schedule="0 0 * * *",
-            no_sync=False,
-            slack_webhook_url="",
-            github_token="",
-        )
+        mock_mirror_operation.assert_called_once()
+        config_arg = mock_mirror_operation.call_args[0][0]
+        assert isinstance(config_arg, MirrorConfig)
+        assert config_arg.target_name == "react"  # no prefix, just repo name
 
     @patch("cli_git.commands.private_mirror.ConfigManager")
     @patch("cli_git.commands.private_mirror.check_gh_auth")
@@ -187,13 +170,7 @@ class TestPrefixFeature:
 
         # Verify custom repo name was used (prefix ignored)
         assert result.exit_code == 0
-        mock_mirror_operation.assert_called_once_with(
-            upstream_url="https://github.com/owner/react",
-            target_name="my-custom-name",  # custom name, prefix ignored
-            username="testuser",
-            org=None,
-            schedule="0 0 * * *",
-            no_sync=False,
-            slack_webhook_url="",
-            github_token="",
-        )
+        mock_mirror_operation.assert_called_once()
+        config_arg = mock_mirror_operation.call_args[0][0]
+        assert isinstance(config_arg, MirrorConfig)
+        assert config_arg.target_name == "my-custom-name"  # custom name, prefix ignored

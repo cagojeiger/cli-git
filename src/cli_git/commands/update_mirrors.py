@@ -37,6 +37,38 @@ class MirrorUpdateResult:
             self.failed_mirrors = []
 
 
+def check_update_prerequisites() -> tuple[ConfigManager, dict, str]:
+    """Check prerequisites for mirror update.
+
+    Returns:
+        Tuple of (config_manager, config, username)
+
+    Raises:
+        typer.Exit: If prerequisites are not met
+    """
+    if not check_gh_auth():
+        typer.echo("❌ GitHub CLI is not authenticated")
+        typer.echo("   Please run: gh auth login")
+        raise typer.Exit(1)
+
+    config_manager = ConfigManager()
+    config = config_manager.get_config()
+
+    github_token = config["github"].get("github_token", "")
+    if not github_token:
+        typer.echo("⚠️  No GitHub token found in configuration")
+        typer.echo("   Run 'cli-git init' to add a GitHub token")
+        typer.echo("   Continuing without GH_TOKEN (tag sync may fail)...")
+
+    try:
+        username = get_current_username()
+    except GitHubError as e:
+        typer.echo(f"❌ {e}")
+        raise typer.Exit(1)
+
+    return config_manager, config, username
+
+
 def update_mirrors_command(
     repo: Annotated[
         Optional[str],
@@ -69,40 +101,20 @@ def update_mirrors_command(
         # Update all mirrors using xargs
         cli-git update-mirrors --scan | xargs -I {} cli-git update-mirrors --repo {}
     """
-    # Check prerequisites
-    if not check_gh_auth():
-        typer.echo("❌ GitHub CLI is not authenticated")
-        typer.echo("   Please run: gh auth login")
-        raise typer.Exit(1)
+    # Step 1: Check prerequisites
+    config_manager, config, username = check_update_prerequisites()
 
-    # Load configuration
-    config_manager = ConfigManager()
-    config = config_manager.get_config()
-
-    github_token = config["github"].get("github_token", "")
-    slack_webhook_url = config["github"].get("slack_webhook_url", "")
-
-    if not github_token:
-        typer.echo("⚠️  No GitHub token found in configuration")
-        typer.echo("   Run 'cli-git init' to add a GitHub token")
-        typer.echo("   Continuing without GH_TOKEN (tag sync may fail)...")
-
-    # Get current username
-    try:
-        username = get_current_username()
-    except GitHubError as e:
-        typer.echo(f"❌ {e}")
-        raise typer.Exit(1)
-
-    # Handle scan option
+    # Step 2: Handle scan option
     if scan:
         _handle_scan_option(config_manager, config, username, verbose)
         return
 
-    # Find mirrors to update
+    # Step 3: Find mirrors to update
     mirrors = _find_mirrors_to_update(repo, config_manager, config, username)
 
-    # Update each mirror
+    # Step 4: Update mirrors
+    github_token = config["github"].get("github_token", "")
+    slack_webhook_url = config["github"].get("slack_webhook_url", "")
     _update_mirrors(mirrors, github_token, slack_webhook_url)
 
 

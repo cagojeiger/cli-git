@@ -6,6 +6,7 @@ import pytest
 from typer.testing import CliRunner
 
 from cli_git.cli import app
+from cli_git.commands.private_mirror import MirrorConfig
 
 
 class TestPrivateMirrorValidation:
@@ -134,9 +135,10 @@ class TestPrivateMirrorValidation:
 
                     # Verify the operation was called with validated inputs
                     mock_op.assert_called_once()
-                    call_args = mock_op.call_args[1]
-                    assert call_args["schedule"] == "0 */6 * * *"
-                    assert call_args["target_name"] == "backup-repo"
+                    config_arg = mock_op.call_args[0][0]
+                    assert isinstance(config_arg, MirrorConfig)
+                    assert config_arg.schedule == "0 */6 * * *"
+                    assert config_arg.target_name == "backup-repo"
 
     def test_custom_repo_name_validation(self, runner, mock_auth_and_config):
         """Test validation with custom repository name."""

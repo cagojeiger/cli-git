@@ -158,24 +158,42 @@ def generate_completion_script(shell: str) -> str:
     return result.stdout
 
 
-def completion_install_command() -> None:
-    """Install shell completion for cli-git."""
-    shell = detect_shell()
+def validate_shell_support(shell: str) -> ShellCompletionHandler:
+    """Validate shell and get handler.
 
+    Args:
+        shell: Detected shell name
+
+    Returns:
+        Shell completion handler
+
+    Raises:
+        typer.Exit: If shell is not supported
+    """
     if shell == "unknown":
         typer.echo("❌ Could not detect shell type")
         typer.echo("   Please install completion manually:")
         typer.echo("   cli-git --install-completion")
         raise typer.Exit(1)
 
-    typer.echo(f"🔍 Detected shell: {shell}")
-
-    # Get the appropriate handler
     handler = get_shell_handler(shell)
     if not handler:
         typer.echo(f"❌ Unsupported shell: {shell}")
         raise typer.Exit(1)
 
+    return handler
+
+
+def install_completion_with_handler(handler: ShellCompletionHandler, shell: str) -> None:
+    """Install completion using the provided handler.
+
+    Args:
+        handler: Shell completion handler
+        shell: Shell name
+
+    Raises:
+        typer.Exit: If installation fails
+    """
     try:
         # Generate completion script
         completion_script = generate_completion_script(shell)
@@ -193,3 +211,16 @@ def completion_install_command() -> None:
     except Exception as e:
         typer.echo(f"❌ Error installing completion: {e}")
         raise typer.Exit(1)
+
+
+def completion_install_command() -> None:
+    """Install shell completion for cli-git."""
+    # Step 1: Detect shell
+    shell = detect_shell()
+    typer.echo(f"🔍 Detected shell: {shell}")
+
+    # Step 2: Validate shell support and get handler
+    handler = validate_shell_support(shell)
+
+    # Step 3: Install completion
+    install_completion_with_handler(handler, shell)

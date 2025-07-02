@@ -2,6 +2,7 @@
 
 import os
 import shutil
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -37,6 +38,20 @@ from cli_git.utils.validators import (
     validate_prefix,
     validate_repository_name,
 )
+
+
+@dataclass
+class MirrorConfig:
+    """Configuration for mirror operation."""
+
+    upstream_url: str
+    target_name: str
+    username: str
+    org: Optional[str] = None
+    schedule: str = "0 0 * * *"
+    no_sync: bool = False
+    slack_webhook_url: Optional[str] = None
+    github_token: Optional[str] = None
 
 
 def clean_github_directory(repo_path: Path) -> bool:
@@ -115,36 +130,20 @@ def setup_mirror_sync(
         )
 
 
-def private_mirror_operation(
-    upstream_url: str,
-    target_name: str,
-    username: str,
-    org: Optional[str] = None,
-    schedule: str = "0 0 * * *",
-    no_sync: bool = False,
-    slack_webhook_url: Optional[str] = None,
-    github_token: Optional[str] = None,
-) -> str:
+def private_mirror_operation(config: MirrorConfig) -> str:
     """Perform the private mirror operation.
 
     Args:
-        upstream_url: URL of the upstream repository
-        target_name: Name for the mirror repository
-        username: GitHub username
-        org: Organization name (optional)
-        schedule: Cron schedule for synchronization
-        no_sync: Skip automatic synchronization setup
-        slack_webhook_url: Slack webhook URL for notifications (optional)
-        github_token: GitHub Personal Access Token for tag sync (optional)
+        config: MirrorConfig with all operation parameters
 
     Returns:
         URL of the created mirror repository
     """
     with TemporaryDirectory() as temp_dir:
         # Clone the repository
-        repo_path = Path(temp_dir) / target_name
+        repo_path = Path(temp_dir) / config.target_name
         typer.echo("  ✓ Cloning repository")
-        clone_repository(upstream_url, repo_path)
+        clone_repository(config.upstream_url, repo_path)
 
         # Change to repo directory
         os.chdir(repo_path)
@@ -158,8 +157,10 @@ def private_mirror_operation(
             commit_changes(repo_path, "Remove original .github directory")
 
         # Create private repository
-        typer.echo(f"  ✓ Creating private repository: {org or username}/{target_name}")
-        mirror_url = create_private_repo(target_name, org=org)
+        typer.echo(
+            f"  ✓ Creating private repository: {config.org or config.username}/{config.target_name}"
+        )
+        mirror_url = create_private_repo(config.target_name, org=config.org)
 
         # Setup remotes
         setup_remotes(repo_path, mirror_url)
@@ -169,15 +170,15 @@ def private_mirror_operation(
         push_to_mirror(repo_path)
 
         # Setup automatic sync if not disabled
-        if not no_sync:
-            repo_full_name = f"{org or username}/{target_name}"
+        if not config.no_sync:
+            repo_full_name = f"{config.org or config.username}/{config.target_name}"
             setup_mirror_sync(
                 repo_path,
                 repo_full_name,
-                upstream_url,
-                schedule,
-                slack_webhook_url,
-                github_token,
+                config.upstream_url,
+                config.schedule,
+                config.slack_webhook_url,
+                config.github_token,
             )
 
     return mirror_url
@@ -248,6 +249,129 @@ def resolve_mirror_parameters(
     return target_name, org
 
 
+def check_prerequisites() -> ConfigManager:
+    """Check GitHub auth and configuration prerequisites.
+
+    Returns:
+        ConfigManager instance with loaded config
+
+    Raises:
+        typer.Exit: If prerequisites are not met
+    """
+    if not check_gh_auth():
+        typer.echo("❌ GitHub CLI is not authenticated")
+        typer.echo("   Please run: gh auth login")
+        raise typer.Exit(1)
+
+    config_manager = ConfigManager()
+    config = config_manager.get_config()
+
+    if not config["github"]["username"]:
+        typer.echo("❌ Configuration not initialized")
+        typer.echo("   Run 'cli-git init' first")
+        raise typer.Exit(1)
+
+    return config_manager
+
+
+def prepare_mirror_config(
+    upstream: str,
+    repo: Optional[str],
+    prefix: Optional[str],
+    org: Optional[str],
+    schedule: str,
+    no_sync: bool,
+    config: Dict[str, any],
+) -> MirrorConfig:
+    """Prepare mirror configuration from inputs and config.
+
+    Args:
+        upstream: Upstream repository URL
+        repo: Custom repository name (optional)
+        prefix: Mirror name prefix (optional)
+        org: Organization name (optional)
+        schedule: Cron schedule
+        no_sync: Whether to disable sync
+        config: Configuration dictionary
+
+    Returns:
+        MirrorConfig with all parameters resolved
+
+    Raises:
+        typer.Exit: If validation fails
+    """
+    # Extract repository information
+    try:
+        _, repo_name = extract_repo_info(upstream)
+    except ValueError as e:
+        typer.echo(f"❌ {e}")
+        raise typer.Exit(1)
+
+    # Resolve parameters
+    target_name, org = resolve_mirror_parameters(config, repo_name, repo, prefix, org)
+
+    # Validate final repository name
+    try:
+        validate_repository_name(target_name)
+    except ValidationError as e:
+        typer.echo(str(e))
+        raise typer.Exit(1)
+
+    # Get current username
+    try:
+        username = get_current_username()
+    except GitHubError as e:
+        typer.echo(f"❌ {e}")
+        raise typer.Exit(1)
+
+    return MirrorConfig(
+        upstream_url=upstream,
+        target_name=target_name,
+        username=username,
+        org=org,
+        schedule=schedule,
+        no_sync=no_sync,
+        slack_webhook_url=config["github"].get("slack_webhook_url", ""),
+        github_token=config["github"].get("github_token", ""),
+    )
+
+
+def save_mirror_info(config_manager: ConfigManager, upstream: str, mirror_url: str) -> None:
+    """Save mirror information to config.
+
+    Args:
+        config_manager: ConfigManager instance
+        upstream: Upstream repository URL
+        mirror_url: Created mirror repository URL
+    """
+    mirror_info = {
+        "upstream": upstream,
+        "mirror": mirror_url,
+        "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    }
+    config_manager.add_recent_mirror(mirror_info)
+
+
+def display_success_message(mirror_url: str, no_sync: bool) -> None:
+    """Display success message with next steps.
+
+    Args:
+        mirror_url: Created mirror repository URL
+        no_sync: Whether automatic sync is disabled
+    """
+    typer.echo("\n✅ Success! Your private mirror is ready:")
+    typer.echo(f"   {mirror_url}")
+    typer.echo("\n📋 Next steps:")
+
+    if no_sync:
+        typer.echo("   - Manual sync is required (automatic sync disabled)")
+    else:
+        typer.echo("   - The mirror will sync daily at 00:00 UTC")
+        typer.echo("   - To sync manually: Go to Actions → Mirror Sync → Run workflow")
+
+    typer.echo(f"   - Clone your mirror: git clone {mirror_url}")
+
+
 def private_mirror_command(
     upstream: Annotated[str, typer.Argument(help="Upstream repository URL")],
     repo: Annotated[
@@ -274,91 +398,32 @@ def private_mirror_command(
     ] = False,
 ) -> None:
     """Create a private mirror of a public repository with auto-sync."""
-    # Check prerequisites
-    if not check_gh_auth():
-        typer.echo("❌ GitHub CLI is not authenticated")
-        typer.echo("   Please run: gh auth login")
-        raise typer.Exit(1)
+    # Step 1: Check prerequisites
+    config_manager = check_prerequisites()
 
-    # Check configuration
-    config_manager = ConfigManager()
-    config = config_manager.get_config()
-
-    if not config["github"]["username"]:
-        typer.echo("❌ Configuration not initialized")
-        typer.echo("   Run 'cli-git init' first")
-        raise typer.Exit(1)
-
-    # Validate all inputs
+    # Step 2: Validate inputs
     try:
         validate_mirror_inputs(upstream, org, schedule, prefix)
     except ValidationError as e:
         typer.echo(str(e))
         raise typer.Exit(1)
 
-    # Extract repository information
-    try:
-        _, repo_name = extract_repo_info(upstream)
-    except ValueError as e:
-        typer.echo(f"❌ {e}")
-        raise typer.Exit(1)
-
-    # Resolve parameters from config and inputs
-    target_name, org = resolve_mirror_parameters(config, repo_name, repo, prefix, org)
-
-    # Validate the final repository name
-    try:
-        validate_repository_name(target_name)
-    except ValidationError as e:
-        typer.echo(str(e))
-        raise typer.Exit(1)
-
-    # Get additional config values
-    slack_webhook_url = config["github"].get("slack_webhook_url", "")
-    github_token = config["github"].get("github_token", "")
-
-    # Get current username
-    try:
-        username = get_current_username()
-    except GitHubError as e:
-        typer.echo(f"❌ {e}")
-        raise typer.Exit(1)
+    # Step 3: Prepare mirror configuration
+    mirror_config = prepare_mirror_config(
+        upstream, repo, prefix, org, schedule, no_sync, config_manager.get_config()
+    )
 
     typer.echo("\n🔄 Creating private mirror...")
 
     try:
-        # Perform the mirror operation
-        mirror_url = private_mirror_operation(
-            upstream_url=upstream,
-            target_name=target_name,
-            username=username,
-            org=org,
-            schedule=schedule,
-            no_sync=no_sync,
-            slack_webhook_url=slack_webhook_url,
-            github_token=github_token,
-        )
+        # Step 4: Perform mirror operation
+        mirror_url = private_mirror_operation(mirror_config)
 
-        # Save to recent mirrors
-        mirror_info = {
-            "upstream": upstream,
-            "mirror": mirror_url,
-            "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-        }
-        config_manager.add_recent_mirror(mirror_info)
+        # Step 5: Save mirror info
+        save_mirror_info(config_manager, upstream, mirror_url)
 
-        # Success message
-        typer.echo("\n✅ Success! Your private mirror is ready:")
-        typer.echo(f"   {mirror_url}")
-        typer.echo("\n📋 Next steps:")
-
-        if no_sync:
-            typer.echo("   - Manual sync is required (automatic sync disabled)")
-        else:
-            typer.echo("   - The mirror will sync daily at 00:00 UTC")
-            typer.echo("   - To sync manually: Go to Actions → Mirror Sync → Run workflow")
-
-        typer.echo(f"   - Clone your mirror: git clone {mirror_url}")
+        # Step 6: Display success message
+        display_success_message(mirror_url, no_sync)
 
     except GitHubError as e:
         typer.echo(f"\n❌ Failed to create mirror: {e}")
