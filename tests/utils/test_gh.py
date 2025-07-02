@@ -28,7 +28,9 @@ class TestGhUtils:
 
         result = check_gh_auth()
         assert result is True
-        mock_run.assert_called_once_with(["gh", "auth", "status"], capture_output=True, text=True)
+        mock_run.assert_called_once_with(
+            ["gh", "auth", "status"], capture_output=True, text=True, check=False
+        )
 
     @patch("subprocess.run")
     def test_check_gh_auth_failure(self, mock_run):
@@ -58,7 +60,7 @@ class TestGhUtils:
             1, ["gh", "api", "user"], stderr="Not authenticated"
         )
 
-        with pytest.raises(GitHubError, match="Failed to get current user"):
+        with pytest.raises(GitHubError, match="gh command failed"):
             get_current_username()
 
     @patch("subprocess.run")
@@ -188,7 +190,7 @@ class TestGhUtils:
             1, ["gh", "api", "user/orgs"], stderr="Not authenticated"
         )
 
-        with pytest.raises(GitHubError, match="Failed to get organizations"):
+        with pytest.raises(GitHubError, match="gh command failed"):
             get_user_organizations()
 
     @patch("subprocess.run")
@@ -228,7 +230,7 @@ class TestGhUtils:
             1, ["gh", "api"], stderr="Repository not found"
         )
 
-        with pytest.raises(GitHubError, match="Failed to get default branch"):
+        with pytest.raises(GitHubError, match="gh command failed"):
             get_upstream_default_branch("https://github.com/owner/repo")
 
     def test_get_upstream_default_branch_invalid_url(self):

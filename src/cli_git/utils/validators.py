@@ -106,54 +106,62 @@ def _validate_cron_field(field: str, min_val: int, max_val: int) -> bool:
     if field == "*":
         return True
 
-    # Handle step values (*/n or n-m/s)
+    # Delegate to specific validators based on pattern
     if "/" in field:
-        parts = field.split("/")
-        if len(parts) != 2:
-            return False
+        return _validate_step_value(field, min_val, max_val)
+    elif "-" in field:
+        return _validate_range(field, min_val, max_val)
+    elif "," in field:
+        return _validate_list(field, min_val, max_val)
+    else:
+        return _validate_single_value(field, min_val, max_val)
 
-        base, step_str = parts
-        try:
-            step = int(step_str)
-            if step <= 0:
-                return False
-        except ValueError:
-            return False
 
-        # Base can be * or range
-        if base == "*":
-            return True
-        elif "-" in base:
-            # Range with step (e.g., 0-59/5)
-            try:
-                start, end = base.split("-")
-                start_val = int(start)
-                end_val = int(end)
-                return min_val <= start_val <= end_val <= max_val
-            except ValueError:
-                return False
-        else:
-            return False
+def _validate_step_value(field: str, min_val: int, max_val: int) -> bool:
+    """Validate step values (*/n or n-m/s)."""
+    parts = field.split("/")
+    if len(parts) != 2:
+        return False
 
-    # Handle ranges (n-m)
-    if "-" in field:
-        try:
-            start, end = field.split("-")
-            start_val = int(start)
-            end_val = int(end)
-            return min_val <= start_val <= end_val <= max_val
-        except ValueError:
+    base, step_str = parts
+    try:
+        step = int(step_str)
+        if step <= 0:
             return False
+    except ValueError:
+        return False
 
-    # Handle lists (n,m,o)
-    if "," in field:
-        try:
-            values = [int(v) for v in field.split(",")]
-            return all(min_val <= v <= max_val for v in values)
-        except ValueError:
-            return False
+    # Base can be * or range
+    if base == "*":
+        return True
+    elif "-" in base:
+        return _validate_range(base, min_val, max_val)
+    else:
+        return False
 
-    # Handle single values
+
+def _validate_range(field: str, min_val: int, max_val: int) -> bool:
+    """Validate ranges (n-m)."""
+    try:
+        start, end = field.split("-")
+        start_val = int(start)
+        end_val = int(end)
+        return min_val <= start_val <= end_val <= max_val
+    except ValueError:
+        return False
+
+
+def _validate_list(field: str, min_val: int, max_val: int) -> bool:
+    """Validate lists (n,m,o)."""
+    try:
+        values = [int(v) for v in field.split(",")]
+        return all(min_val <= v <= max_val for v in values)
+    except ValueError:
+        return False
+
+
+def _validate_single_value(field: str, min_val: int, max_val: int) -> bool:
+    """Validate single values."""
     try:
         value = int(field)
         return min_val <= value <= max_val

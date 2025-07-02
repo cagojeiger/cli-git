@@ -1,7 +1,7 @@
 """GitHub CLI (gh) utility functions."""
 
 import subprocess
-from typing import Optional
+from typing import List, Optional
 
 from cli_git.utils.git import extract_repo_info
 
@@ -12,6 +12,41 @@ class GitHubError(Exception):
     pass
 
 
+def run_gh_command(
+    args: List[str],
+    check: bool = True,
+    capture_output: bool = True,
+    interactive: bool = False,
+) -> subprocess.CompletedProcess:
+    """Run a gh CLI command with common error handling.
+
+    Args:
+        args: Command arguments (without 'gh' prefix)
+        check: Whether to check return code
+        capture_output: Whether to capture output
+        interactive: Whether to run interactively (no capture)
+
+    Returns:
+        CompletedProcess instance
+
+    Raises:
+        GitHubError: If command fails and check=True
+        FileNotFoundError: If gh CLI is not found
+    """
+    cmd = ["gh"] + args
+
+    try:
+        if interactive:
+            return subprocess.run(cmd, check=check)
+        else:
+            return subprocess.run(cmd, capture_output=capture_output, text=True, check=check)
+    except subprocess.CalledProcessError as e:
+        stderr = getattr(e, "stderr", "") or ""
+        raise GitHubError(f"gh command failed: {stderr}")
+    except FileNotFoundError:
+        raise GitHubError("gh CLI not found. Please install GitHub CLI.")
+
+
 def check_gh_auth() -> bool:
     """Check if gh CLI is authenticated.
 
@@ -19,9 +54,9 @@ def check_gh_auth() -> bool:
         True if authenticated, False otherwise
     """
     try:
-        result = subprocess.run(["gh", "auth", "status"], capture_output=True, text=True)
+        result = run_gh_command(["auth", "status"], check=False)
         return result.returncode == 0
-    except FileNotFoundError:
+    except GitHubError:
         return False
 
 
@@ -32,9 +67,9 @@ def run_gh_auth_login() -> bool:
         True if login succeeded, False otherwise
     """
     try:
-        result = subprocess.run(["gh", "auth", "login"], check=False)
+        result = run_gh_command(["auth", "login"], check=False, interactive=True)
         return result.returncode == 0
-    except FileNotFoundError:
+    except GitHubError:
         return False
 
 
@@ -47,15 +82,8 @@ def get_current_username() -> str:
     Raises:
         GitHubError: If unable to get username
     """
-    try:
-        result = subprocess.run(
-            ["gh", "api", "user", "-q", ".login"], capture_output=True, text=True, check=True
-        )
-        return result.stdout.strip()
-    except subprocess.CalledProcessError as e:
-        raise GitHubError(f"Failed to get current user: {e.stderr}")
-    except FileNotFoundError:
-        raise GitHubError("gh CLI not found. Please install GitHub CLI.")
+    result = run_gh_command(["api", "user", "-q", ".login"])
+    return result.stdout.strip()
 
 
 def create_private_repo(
@@ -78,17 +106,18 @@ def create_private_repo(
     repo_name = f"{org}/{name}" if org else name
 
     # Build command
-    cmd = ["gh", "repo", "create", repo_name, "--private"]
+    args = ["repo", "create", repo_name, "--private"]
     if description:
-        cmd.extend(["--description", description])
+        args.extend(["--description", description])
 
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        result = run_gh_command(args)
         return result.stdout.strip()
-    except subprocess.CalledProcessError as e:
-        if "Validation Failed" in e.stderr or "already exists" in e.stderr:
+    except GitHubError as e:
+        error_msg = str(e)
+        if "Validation Failed" in error_msg or "already exists" in error_msg:
             raise GitHubError(f"Repository '{repo_name}' already exists")
-        raise GitHubError(f"Failed to create repository: {e.stderr}")
+        raise GitHubError(f"Failed to create repository: {error_msg}")
 
 
 def add_repo_secret(repo: str, name: str, value: str) -> None:
@@ -102,12 +131,15 @@ def add_repo_secret(repo: str, name: str, value: str) -> None:
     Raises:
         GitHubError: If adding secret fails
     """
-    cmd = ["gh", "secret", "set", name, "--repo", repo]
+    args = ["secret", "set", name, "--repo", repo]
 
     try:
+        # Special handling for input
+        cmd = ["gh"] + args
         subprocess.run(cmd, input=value, capture_output=True, text=True, check=True)
     except subprocess.CalledProcessError as e:
-        raise GitHubError(f"Failed to set secret '{name}': {e.stderr}")
+        stderr = getattr(e, "stderr", "") or ""
+        raise GitHubError(f"Failed to set secret '{name}': {stderr}")
 
 
 def get_user_organizations() -> list[str]:
@@ -119,20 +151,10 @@ def get_user_organizations() -> list[str]:
     Raises:
         GitHubError: If unable to fetch organizations
     """
-    try:
-        result = subprocess.run(
-            ["gh", "api", "user/orgs", "-q", ".[].login"],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        # Split by newlines and filter empty strings
-        orgs = [org.strip() for org in result.stdout.strip().split("\n") if org.strip()]
-        return orgs
-    except subprocess.CalledProcessError as e:
-        raise GitHubError(f"Failed to get organizations: {e.stderr}")
-    except FileNotFoundError:
-        raise GitHubError("gh CLI not found. Please install GitHub CLI.")
+    result = run_gh_command(["api", "user/orgs", "-q", ".[].login"])
+    # Split by newlines and filter empty strings
+    orgs = [org.strip() for org in result.stdout.strip().split("\n") if org.strip()]
+    return orgs
 
 
 def get_upstream_default_branch(upstream_url: str) -> str:
@@ -149,19 +171,10 @@ def get_upstream_default_branch(upstream_url: str) -> str:
     """
     try:
         owner, repo = extract_repo_info(upstream_url)
-        result = subprocess.run(
-            ["gh", "api", f"repos/{owner}/{repo}", "-q", ".default_branch"],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
+        result = run_gh_command(["api", f"repos/{owner}/{repo}", "-q", ".default_branch"])
         return result.stdout.strip()
-    except subprocess.CalledProcessError as e:
-        raise GitHubError(f"Failed to get default branch: {e.stderr}")
     except ValueError as e:
         raise GitHubError(f"Invalid repository URL: {e}")
-    except FileNotFoundError:
-        raise GitHubError("gh CLI not found. Please install GitHub CLI.")
 
 
 def validate_github_token(token: str) -> bool:
@@ -177,12 +190,9 @@ def validate_github_token(token: str) -> bool:
         return False
 
     try:
-        # Use the token to make a simple API call
-        result = subprocess.run(
-            ["gh", "api", "user", "-H", f"Authorization: token {token}"],
-            capture_output=True,
-            text=True,
-        )
+        # Special case: need to pass header directly
+        cmd = ["gh", "api", "user", "-H", f"Authorization: token {token}"]
+        result = subprocess.run(cmd, capture_output=True, text=True)
         return result.returncode == 0
     except Exception:
         return False

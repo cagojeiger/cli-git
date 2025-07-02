@@ -27,6 +27,12 @@ dependencies = [
 [project.scripts]
 cli-git = "cli_git.cli:app"
 
+[tool.hatch.build.targets.wheel]
+packages = ["src/cli_git"]
+
+[tool.hatch.build.targets.wheel.shared-data]
+"src/cli_git/templates" = "cli_git/templates"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
