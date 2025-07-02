@@ -34,7 +34,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{{{ secrets.GITHUB_TOKEN }}}}
+          token: ${{{{ secrets.GH_TOKEN }}}}
 
       - name: Configure git
         run: |
@@ -46,7 +46,7 @@ jobs:
         env:
           UPSTREAM_URL: ${{{{ secrets.UPSTREAM_URL }}}}
           UPSTREAM_DEFAULT_BRANCH: ${{{{ secrets.UPSTREAM_DEFAULT_BRANCH }}}}
-          GH_TOKEN: ${{{{ secrets.GITHUB_TOKEN }}}}
+          GH_TOKEN: ${{{{ secrets.GH_TOKEN }}}}
         run: |
           echo "Adding upstream remote..."
           git remote add upstream $UPSTREAM_URL || git remote set-url upstream $UPSTREAM_URL
@@ -113,7 +113,7 @@ jobs:
         if: steps.sync.outputs.has_conflicts == 'true'
         id: pr
         env:
-          GH_TOKEN: ${{{{ secrets.GITHUB_TOKEN }}}}
+          GH_TOKEN: ${{{{ secrets.GH_TOKEN }}}}
         run: |
           # Create branch for conflict resolution with unique name
           BRANCH_NAME="sync/upstream-$(date +%Y%m%d-%H%M%S)-${{{{ github.run_id }}}}"
@@ -156,10 +156,22 @@ jobs:
 
       - name: Sync tags
         if: steps.sync.outputs.has_conflicts == 'false'
+        env:
+          GH_TOKEN: ${{{{ secrets.GH_TOKEN }}}}
         run: |
           echo "Syncing tags..."
+
+          # Configure git to use GH_TOKEN if available
+          if [ -n "$GH_TOKEN" ]; then
+            echo "Using GH_TOKEN for authentication"
+            # 더 명시적으로 origin remote URL을 GH_TOKEN을 사용하도록 설정
+            git remote set-url origin https://x-access-token:${{GH_TOKEN}}@github.com/${{{{ github.repository }}}}
+          else
+            echo "Warning: GH_TOKEN not found. Tag sync may fail if tags contain workflow files."
+          fi
+
           git fetch upstream --tags
-          git push origin --tags
+          git push origin --tags --force
 
   notify-slack-failure:
     needs: sync

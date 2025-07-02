@@ -12,6 +12,7 @@ from cli_git.commands.completion import completion_install_command
 from cli_git.commands.info import info_command
 from cli_git.commands.init import init_command
 from cli_git.commands.private_mirror import private_mirror_command
+from cli_git.commands.update_mirrors import update_mirrors_command
 
 
 def create_version_message(version: str) -> str:
@@ -89,6 +90,7 @@ app.command(name="init")(init_command)
 app.command(name="info")(info_command)
 app.command(name="private-mirror")(private_mirror_command)
 app.command(name="completion")(completion_install_command)
+app.command(name="update-mirrors")(update_mirrors_command)
 
 
 if __name__ == "__main__":

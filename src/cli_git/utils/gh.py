@@ -162,3 +162,47 @@ def get_upstream_default_branch(upstream_url: str) -> str:
         raise GitHubError(f"Invalid repository URL: {e}")
     except FileNotFoundError:
         raise GitHubError("gh CLI not found. Please install GitHub CLI.")
+
+
+def validate_github_token(token: str) -> bool:
+    """Validate a GitHub Personal Access Token.
+
+    Args:
+        token: GitHub Personal Access Token to validate
+
+    Returns:
+        True if token is valid, False otherwise
+    """
+    if not token:
+        return False
+
+    try:
+        # Use the token to make a simple API call
+        result = subprocess.run(
+            ["gh", "api", "user", "-H", f"Authorization: token {token}"],
+            capture_output=True,
+            text=True,
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+def mask_token(token: str) -> str:
+    """Mask a GitHub token for display.
+
+    Args:
+        token: GitHub token to mask
+
+    Returns:
+        Masked token for display
+    """
+    if not token:
+        return ""
+
+    # GitHub tokens typically start with 'ghp_' or 'github_pat_'
+    if len(token) <= 8:
+        return "***"
+
+    # Show first 4 and last 4 characters
+    return f"{token[:4]}...{token[-4:]}"

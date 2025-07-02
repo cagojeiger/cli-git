@@ -68,6 +68,7 @@ def private_mirror_operation(
     schedule: str = "0 0 * * *",
     no_sync: bool = False,
     slack_webhook_url: Optional[str] = None,
+    github_token: Optional[str] = None,
 ) -> str:
     """Perform the private mirror operation.
 
@@ -79,6 +80,7 @@ def private_mirror_operation(
         schedule: Cron schedule for synchronization
         no_sync: Skip automatic synchronization setup
         slack_webhook_url: Slack webhook URL for notifications (optional)
+        github_token: GitHub Personal Access Token for tag sync (optional)
 
     Returns:
         URL of the created mirror repository
@@ -156,6 +158,15 @@ def private_mirror_operation(
             repo_full_name = f"{org or username}/{target_name}"
             add_repo_secret(repo_full_name, "UPSTREAM_URL", upstream_url)
             add_repo_secret(repo_full_name, "UPSTREAM_DEFAULT_BRANCH", upstream_default_branch)
+
+            # Add GitHub token if available
+            if github_token:
+                add_repo_secret(repo_full_name, "GH_TOKEN", github_token)
+                typer.echo("  ✓ GitHub token added for tag synchronization")
+            else:
+                typer.echo(
+                    "  ⚠️  No GitHub token provided. Tag sync may fail if tags contain workflow files."
+                )
 
             # Add Slack webhook secret if provided
             if slack_webhook_url:
@@ -256,6 +267,9 @@ def private_mirror_command(
     # Get Slack webhook URL from config
     slack_webhook_url = config["github"].get("slack_webhook_url", "")
 
+    # Get GitHub token from config
+    github_token = config["github"].get("github_token", "")
+
     # Get current username
     try:
         username = get_current_username()
@@ -275,6 +289,7 @@ def private_mirror_command(
             schedule=schedule,
             no_sync=no_sync,
             slack_webhook_url=slack_webhook_url,
+            github_token=github_token,
         )
 
         # Save to recent mirrors

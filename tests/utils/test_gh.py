@@ -12,7 +12,9 @@ from cli_git.utils.gh import (
     create_private_repo,
     get_current_username,
     get_user_organizations,
+    mask_token,
     run_gh_auth_login,
+    validate_github_token,
 )
 
 
@@ -235,3 +237,60 @@ class TestGhUtils:
 
         with pytest.raises(GitHubError, match="Invalid repository URL"):
             get_upstream_default_branch("not-a-valid-url")
+
+    @patch("subprocess.run")
+    def test_validate_github_token_valid(self, mock_run):
+        """Test validating a valid GitHub token."""
+        mock_run.return_value = MagicMock(returncode=0)
+
+        result = validate_github_token("ghp_test123token")
+        assert result is True
+        mock_run.assert_called_once_with(
+            ["gh", "api", "user", "-H", "Authorization: token ghp_test123token"],
+            capture_output=True,
+            text=True,
+        )
+
+    @patch("subprocess.run")
+    def test_validate_github_token_invalid(self, mock_run):
+        """Test validating an invalid GitHub token."""
+        mock_run.return_value = MagicMock(returncode=1)
+
+        result = validate_github_token("invalid_token")
+        assert result is False
+
+    def test_validate_github_token_empty(self):
+        """Test validating empty token."""
+        result = validate_github_token("")
+        assert result is False
+
+    @patch("subprocess.run")
+    def test_validate_github_token_exception(self, mock_run):
+        """Test handling exception during token validation."""
+        mock_run.side_effect = Exception("Unexpected error")
+
+        result = validate_github_token("token")
+        assert result is False
+
+    def test_mask_token_standard(self):
+        """Test masking standard GitHub token."""
+        token = "ghp_1234567890abcdef"
+        masked = mask_token(token)
+        assert masked == "ghp_...cdef"
+
+    def test_mask_token_pat(self):
+        """Test masking GitHub PAT token."""
+        token = "github_pat_1234567890abcdef"
+        masked = mask_token(token)
+        assert masked == "gith...cdef"
+
+    def test_mask_token_short(self):
+        """Test masking short token."""
+        token = "short"
+        masked = mask_token(token)
+        assert masked == "***"
+
+    def test_mask_token_empty(self):
+        """Test masking empty token."""
+        masked = mask_token("")
+        assert masked == ""

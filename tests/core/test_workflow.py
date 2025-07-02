@@ -80,6 +80,7 @@ class TestWorkflow:
         assert "git rebase upstream/$DEFAULT_BRANCH" in workflow_yaml
         assert "git push origin $CURRENT_BRANCH --force-with-lease" in workflow_yaml
         assert "git push origin --tags" in workflow_yaml
+        assert "GH_TOKEN" in workflow_yaml
 
     def test_conflict_handling(self):
         """Test that conflict handling logic is present."""
@@ -94,3 +95,29 @@ class TestWorkflow:
         assert "has_conflicts=false" in workflow_yaml
         assert "gh pr create" in workflow_yaml
         assert "notify-slack" in workflow_yaml
+
+    def test_gh_token_configuration(self):
+        """Test that GH_TOKEN is properly configured for tag syncing."""
+        workflow_yaml = generate_sync_workflow(
+            upstream_url="https://github.com/owner/repo",
+            schedule="0 0 * * *",
+            upstream_default_branch="main",
+        )
+
+        # Check GH_TOKEN usage in tag sync
+        lines = workflow_yaml.split("\n")
+
+        # Find the Sync tags section
+        tag_sync_found = False
+        gh_token_env_found = False
+        for i, line in enumerate(lines):
+            if "- name: Sync tags" in line:
+                tag_sync_found = True
+            if tag_sync_found and "GH_TOKEN: ${{ secrets.GH_TOKEN }}" in line:
+                gh_token_env_found = True
+                break
+
+        assert tag_sync_found, "Sync tags section not found"
+        assert gh_token_env_found, "GH_TOKEN environment variable not found in tag sync"
+        assert 'if [ -n "$GH_TOKEN" ]; then' in workflow_yaml
+        assert "x-access-token:${GH_TOKEN}@github.com" in workflow_yaml

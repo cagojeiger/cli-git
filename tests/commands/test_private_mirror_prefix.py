@@ -55,6 +55,7 @@ class TestPrefixFeature:
             schedule="0 0 * * *",
             no_sync=False,
             slack_webhook_url="",
+            github_token="",
         )
 
     @patch("cli_git.commands.private_mirror.ConfigManager")
@@ -98,6 +99,7 @@ class TestPrefixFeature:
             schedule="0 0 * * *",
             no_sync=False,
             slack_webhook_url="",
+            github_token="",
         )
 
     @patch("cli_git.commands.private_mirror.ConfigManager")
@@ -141,6 +143,7 @@ class TestPrefixFeature:
             schedule="0 0 * * *",
             no_sync=False,
             slack_webhook_url="",
+            github_token="",
         )
 
     @patch("cli_git.commands.private_mirror.ConfigManager")
@@ -192,4 +195,5 @@ class TestPrefixFeature:
             schedule="0 0 * * *",
             no_sync=False,
             slack_webhook_url="",
+            github_token="",
         )

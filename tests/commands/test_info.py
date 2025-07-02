@@ -26,8 +26,13 @@ class TestInfoCommand:
         mock_manager = MagicMock()
         mock_config_manager.return_value = mock_manager
         mock_manager.get_config.return_value = {
-            "github": {"username": "testuser", "default_org": ""},
-            "preferences": {"default_schedule": "0 0 * * *"},
+            "github": {
+                "username": "testuser",
+                "default_org": "",
+                "github_token": "",
+                "slack_webhook_url": "",
+            },
+            "preferences": {"default_schedule": "0 0 * * *", "default_prefix": "mirror-"},
         }
         mock_manager.get_recent_mirrors.return_value = []
 
@@ -37,7 +42,7 @@ class TestInfoCommand:
         # Verify
         assert result.exit_code == 0
         assert "📋 CLI-Git Configuration" in result.stdout
-        assert "GitHub username: testuser" in result.stdout
+        assert "Username: testuser" in result.stdout
         assert "Default organization: (not set)" in result.stdout
         assert "gh CLI status: ✅ Authenticated" in result.stdout
 
@@ -50,8 +55,13 @@ class TestInfoCommand:
         mock_manager = MagicMock()
         mock_config_manager.return_value = mock_manager
         mock_manager.get_config.return_value = {
-            "github": {"username": "testuser", "default_org": "myorg"},
-            "preferences": {"default_schedule": "0 0 * * *"},
+            "github": {
+                "username": "testuser",
+                "default_org": "myorg",
+                "github_token": "",
+                "slack_webhook_url": "",
+            },
+            "preferences": {"default_schedule": "0 0 * * *", "default_prefix": "mirror-"},
         }
         mock_manager.get_recent_mirrors.return_value = []
 
@@ -71,8 +81,13 @@ class TestInfoCommand:
         mock_manager = MagicMock()
         mock_config_manager.return_value = mock_manager
         mock_manager.get_config.return_value = {
-            "github": {"username": "testuser", "default_org": ""},
-            "preferences": {"default_schedule": "0 0 * * *"},
+            "github": {
+                "username": "testuser",
+                "default_org": "",
+                "github_token": "",
+                "slack_webhook_url": "",
+            },
+            "preferences": {"default_schedule": "0 0 * * *", "default_prefix": "mirror-"},
         }
         mock_manager.get_recent_mirrors.return_value = []
 
@@ -92,8 +107,13 @@ class TestInfoCommand:
         mock_manager = MagicMock()
         mock_config_manager.return_value = mock_manager
         mock_manager.get_config.return_value = {
-            "github": {"username": "testuser", "default_org": ""},
-            "preferences": {"default_schedule": "0 0 * * *"},
+            "github": {
+                "username": "testuser",
+                "default_org": "",
+                "github_token": "",
+                "slack_webhook_url": "",
+            },
+            "preferences": {"default_schedule": "0 0 * * *", "default_prefix": "mirror-"},
         }
         mock_manager.get_recent_mirrors.return_value = [
             {
@@ -128,8 +148,13 @@ class TestInfoCommand:
         mock_manager = MagicMock()
         mock_config_manager.return_value = mock_manager
         mock_manager.get_config.return_value = {
-            "github": {"username": "testuser", "default_org": "myorg"},
-            "preferences": {"default_schedule": "0 0 * * *"},
+            "github": {
+                "username": "testuser",
+                "default_org": "myorg",
+                "github_token": "",
+                "slack_webhook_url": "",
+            },
+            "preferences": {"default_schedule": "0 0 * * *", "default_prefix": "mirror-"},
         }
         mock_manager.get_recent_mirrors.return_value = [
             {
@@ -161,8 +186,13 @@ class TestInfoCommand:
         mock_manager = MagicMock()
         mock_config_manager.return_value = mock_manager
         mock_manager.get_config.return_value = {
-            "github": {"username": "", "default_org": ""},
-            "preferences": {"default_schedule": "0 0 * * *"},
+            "github": {
+                "username": "",
+                "default_org": "",
+                "github_token": "",
+                "slack_webhook_url": "",
+            },
+            "preferences": {"default_schedule": "0 0 * * *", "default_prefix": "mirror-"},
         }
         mock_manager.get_recent_mirrors.return_value = []
 
@@ -171,5 +201,34 @@ class TestInfoCommand:
 
         # Verify
         assert result.exit_code == 0
-        assert "GitHub username: (not set)" in result.stdout
+        assert "Username: (not set)" in result.stdout
         assert "Run 'cli-git init' to configure" in result.stdout
+
+    @patch("cli_git.commands.info.ConfigManager")
+    @patch("cli_git.commands.info.check_gh_auth")
+    def test_info_with_github_token(self, mock_check_auth, mock_config_manager, runner):
+        """Test info display with GitHub token configured."""
+        # Setup mocks
+        mock_check_auth.return_value = True
+        mock_manager = MagicMock()
+        mock_config_manager.return_value = mock_manager
+        mock_manager.get_config.return_value = {
+            "github": {
+                "username": "testuser",
+                "default_org": "",
+                "github_token": "ghp_1234567890abcdefghijklmnopqrstuvwxyz",
+                "slack_webhook_url": "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX",
+            },
+            "preferences": {"default_schedule": "0 0 * * *", "default_prefix": "mirror-"},
+        }
+        mock_manager.get_recent_mirrors.return_value = []
+
+        # Run command
+        result = runner.invoke(app, ["info"])
+
+        # Verify
+        assert result.exit_code == 0
+        assert "GitHub token: ✅ Set (ghp_...wxyz)" in result.stdout
+        assert (
+            "Slack webhook: ✅ Set (https://hooks.slack.com/servic...XXXXXXXXXX)" in result.stdout
+        )

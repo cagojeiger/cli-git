@@ -59,6 +59,7 @@ class TestPrivateMirrorCommand:
             schedule="0 0 * * *",
             no_sync=False,
             slack_webhook_url="",
+            github_token="",
         )
 
         # Verify mirror was added to recent mirrors
@@ -138,6 +139,7 @@ class TestPrivateMirrorCommand:
             schedule="0 0 * * *",
             no_sync=False,
             slack_webhook_url="",
+            github_token="",
         )
 
     @patch("cli_git.commands.private_mirror.check_gh_auth")
@@ -170,6 +172,7 @@ class TestPrivateMirrorCommand:
             schedule="0 0 * * *",
             no_sync=False,
             slack_webhook_url="",
+            github_token="",
         )
 
     @patch("cli_git.commands.private_mirror.check_gh_auth")

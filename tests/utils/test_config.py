@@ -1,5 +1,7 @@
 """Tests for ConfigManager."""
 
+from unittest.mock import patch
+
 from cli_git.utils.config import ConfigManager
 
 
@@ -97,3 +99,131 @@ class TestConfigManager:
         assert len(mirrors) == 10
         assert mirrors[0]["upstream"] == "https://github.com/owner/repo14"  # Most recent
         assert mirrors[9]["upstream"] == "https://github.com/owner/repo5"  # 10th most recent
+
+    def test_save_and_get_repo_completion_cache(self, tmp_path):
+        """Test saving and retrieving repository completion cache."""
+        manager = ConfigManager(tmp_path / ".cli-git")
+
+        # Test data
+        repos = [
+            {
+                "nameWithOwner": "testuser/repo1",
+                "description": "Test repo 1",
+                "is_mirror": True,
+                "updatedAt": "2025-01-01T00:00:00Z",
+            },
+            {
+                "nameWithOwner": "testuser/repo2",
+                "description": "Test repo 2",
+                "is_mirror": False,
+                "updatedAt": "2025-01-02T00:00:00Z",
+            },
+        ]
+
+        # Save cache
+        manager.save_repo_completion_cache(repos)
+
+        # Retrieve cache
+        cached_repos = manager.get_repo_completion_cache()
+
+        assert cached_repos is not None
+        assert len(cached_repos) == 2
+        assert cached_repos[0]["nameWithOwner"] == "testuser/repo1"
+        assert cached_repos[0]["is_mirror"] is True
+        assert cached_repos[1]["nameWithOwner"] == "testuser/repo2"
+        assert cached_repos[1]["is_mirror"] is False
+
+    def test_repo_completion_cache_expiry(self, tmp_path):
+        """Test that repository completion cache expires after max_age."""
+        import time
+
+        manager = ConfigManager(tmp_path / ".cli-git")
+
+        # Save cache
+        repos = [{"nameWithOwner": "testuser/repo1", "is_mirror": True}]
+
+        # Mock time for save operation
+        current_time = time.time()
+        with patch("time.time", return_value=current_time):
+            manager.save_repo_completion_cache(repos)
+
+        # Get cache immediately - should work
+        cached = manager.get_repo_completion_cache(max_age=10)
+        assert cached is not None
+        assert len(cached) == 1
+
+        # Mock time to simulate cache aging
+        with patch("time.time") as mock_time:
+            # First call returns current time + 20 for age calculation
+            # Second call returns timestamp from cache data
+            mock_time.side_effect = [current_time + 20, current_time]
+
+            # Get cache with 10 second max age - should be None
+            cached = manager.get_repo_completion_cache(max_age=10)
+            assert cached is None
+
+            # Reset side_effect for next test
+            mock_time.side_effect = [current_time + 20, current_time]
+
+            # Get cache with 30 second max age - should still work
+            cached = manager.get_repo_completion_cache(max_age=30)
+            assert cached is not None
+
+    def test_save_and_get_scanned_mirrors(self, tmp_path):
+        """Test saving and retrieving scanned mirrors cache."""
+        manager = ConfigManager(tmp_path / ".cli-git")
+
+        # Test data
+        mirrors = [
+            {
+                "name": "testuser/mirror1",
+                "mirror": "https://github.com/testuser/mirror1",
+                "upstream": "https://github.com/upstream/repo1",
+                "description": "Mirror 1",
+            },
+            {
+                "name": "testuser/mirror2",
+                "mirror": "https://github.com/testuser/mirror2",
+                "upstream": "",
+                "description": "",
+            },
+        ]
+
+        # Save mirrors
+        manager.save_scanned_mirrors(mirrors)
+
+        # Retrieve cached mirrors
+        cached = manager.get_scanned_mirrors()
+        assert cached is not None
+        assert len(cached) == 2
+        assert cached[0]["name"] == "testuser/mirror1"
+
+    def test_scanned_mirrors_cache_expiry(self, tmp_path):
+        """Test that scanned mirrors cache expires after max_age."""
+        import time
+
+        manager = ConfigManager(tmp_path / ".cli-git")
+
+        # Save cache
+        mirrors = [{"name": "testuser/mirror1"}]
+
+        # Mock time for save operation
+        current_time = time.time()
+        with patch("time.time", return_value=current_time):
+            manager.save_scanned_mirrors(mirrors)
+
+        # Test with time mocking
+        with patch("time.time") as mock_time:
+            # First call returns current time + 600 for age calculation
+            mock_time.side_effect = [current_time + 600, current_time]
+
+            # Default max_age is 30 minutes - should work
+            cached = manager.get_scanned_mirrors()
+            assert cached is not None
+
+            # Reset side_effect for next test
+            mock_time.side_effect = [current_time + 3600, current_time]
+
+            # After 1 hour - should be None
+            cached = manager.get_scanned_mirrors()
+            assert cached is None

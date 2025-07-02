@@ -10,7 +10,9 @@ from cli_git.utils.gh import (
     check_gh_auth,
     get_current_username,
     get_user_organizations,
+    mask_token,
     run_gh_auth_login,
+    validate_github_token,
 )
 from cli_git.utils.validators import ValidationError, validate_prefix, validate_slack_webhook_url
 
@@ -119,6 +121,26 @@ def init_command(
             typer.echo(str(e))
             typer.echo("   Press Enter to skip or enter a valid URL")
 
+    # Ask for GitHub Personal Access Token
+    typer.echo("\n🔑 GitHub Personal Access Token (선택사항)")
+    typer.echo("   태그 동기화를 위해 필요한 권한:")
+    typer.echo("   - repo (전체 저장소 접근)")
+    typer.echo("   - workflow (워크플로우 파일 수정)")
+    typer.echo("")
+    typer.echo("   토큰 생성: https://github.com/settings/tokens/new")
+    typer.echo("   토큰이 없으면 Enter를 누르세요 (태그 동기화가 작동하지 않을 수 있음)")
+
+    while True:
+        github_token = typer.prompt("GitHub Personal Access Token", default="", hide_input=True)
+        if not github_token:
+            typer.echo("   ⚠️  토큰 없이 계속합니다. 태그 동기화가 실패할 수 있습니다.")
+            break
+        elif validate_github_token(github_token):
+            typer.echo("   ✓ 토큰이 유효합니다.")
+            break
+        else:
+            typer.echo("   ❌ 유효하지 않은 토큰입니다. 다시 시도하거나 Enter를 눌러 건너뛰세요.")
+
     # Ask for default mirror prefix
     while True:
         default_prefix = typer.prompt("\nDefault mirror prefix", default="mirror-")
@@ -134,6 +156,7 @@ def init_command(
             "username": username,
             "default_org": default_org,
             "slack_webhook_url": slack_webhook_url,
+            "github_token": github_token,
         },
         "preferences": {"default_prefix": default_prefix},
     }
@@ -147,6 +170,8 @@ def init_command(
         typer.echo(f"   Default organization: {default_org}")
     if slack_webhook_url:
         typer.echo(f"   Slack webhook: {mask_webhook_url(slack_webhook_url)}")
+    if github_token:
+        typer.echo(f"   GitHub token: {mask_token(github_token)}")
     typer.echo(f"   Mirror prefix: {default_prefix}")
     typer.echo()
     typer.echo("Next steps:")
