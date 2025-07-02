@@ -212,6 +212,8 @@ class TestUpdateMirrorsCommand:
             "github": {"username": "testuser", "github_token": "test_token"},
             "preferences": {},
         }
+        # Return None for scanned mirrors so it falls back to recent mirrors
+        mock_manager.get_scanned_mirrors.return_value = None
         mock_manager.get_recent_mirrors.return_value = [
             {
                 "upstream": "https://github.com/owner1/repo1",
@@ -226,9 +228,13 @@ class TestUpdateMirrorsCommand:
         # Mock subprocess for workflow check (returns 0 = workflow exists)
         mock_subprocess.return_value.returncode = 0
 
-        result = runner.invoke(app, ["update-mirrors", "--all"])
+        # Simulate selecting all mirrors in interactive mode
+        with patch("cli_git.commands.update_mirrors.typer.prompt", return_value="1,2"):
+            result = runner.invoke(app, ["update-mirrors"])
 
         assert result.exit_code == 0
+        # First shows the interactive menu, then update results
+        assert "📋 Found mirror repositories:" in result.stdout
         assert "📊 Update complete: 2/2 mirrors updated successfully" in result.stdout
 
     @patch("cli_git.commands.update_mirrors.check_gh_auth")
@@ -258,18 +264,32 @@ class TestUpdateMirrorsCommand:
         mock_scan.return_value = []
         mock_manager.get_scanned_mirrors.return_value = None  # No cache
 
+        # Test without verbose - should exit with no output for empty results
         result = runner.invoke(app, ["update-mirrors", "--scan"])
+        assert result.exit_code == 0
+        assert result.stdout.strip() == ""  # No output for empty results
 
+        # Verify scan was called
+        mock_scan.assert_called_with("testuser", "testorg")
+        # Verify cache was saved
+        mock_manager.save_scanned_mirrors.assert_called_with([])
+
+        # Reset mocks for second invocation
+        mock_scan.reset_mock()
+        mock_manager.save_scanned_mirrors.reset_mock()
+
+        # Test with verbose
+        result = runner.invoke(app, ["update-mirrors", "--scan", "--verbose"])
         assert result.exit_code == 0
         assert "Scanning GitHub for mirror repositories" in result.stdout
         # Since scan returns empty list, it should show "No mirror repositories found"
         assert "No mirror repositories found" in result.stdout
         assert "Make sure you have mirror repositories" in result.stdout
 
-        # Verify scan was called with username, org, and prefix (None)
-        mock_scan.assert_called_once_with("testuser", "testorg", None)
-        # Verify cache was saved
-        mock_manager.save_scanned_mirrors.assert_called_once_with([], None)
+        # Verify scan was called again
+        mock_scan.assert_called_once_with("testuser", "testorg")
+        # Verify cache was saved again
+        mock_manager.save_scanned_mirrors.assert_called_once_with([])
 
     @patch("cli_git.commands.update_mirrors.check_gh_auth")
     @patch("cli_git.commands.update_mirrors.ConfigManager")
@@ -316,8 +336,20 @@ class TestUpdateMirrorsCommand:
         mock_scan.return_value = mirrors
         mock_manager.get_scanned_mirrors.return_value = None  # No cache
 
+        # Test without verbose - should output just repo names
         result = runner.invoke(app, ["update-mirrors", "--scan"])
+        assert result.exit_code == 0
+        lines = result.stdout.strip().split("\n")
+        assert len(lines) == 2
+        assert lines[0] == "testuser/mirror-project1"
+        assert lines[1] == "testuser/mirror-project2"
 
+        # Reset mocks
+        mock_scan.reset_mock()
+        mock_manager.save_scanned_mirrors.reset_mock()
+
+        # Test with verbose
+        result = runner.invoke(app, ["update-mirrors", "--scan", "--verbose"])
         assert result.exit_code == 0
         assert "Found 2 mirror repositories" in result.stdout
         assert "testuser/mirror-project1" in result.stdout
@@ -326,13 +358,81 @@ class TestUpdateMirrorsCommand:
         assert "🔒" in result.stdout  # Private repo indicator
         assert "🌐" in result.stdout  # Public repo indicator
         assert "To update these mirrors:" in result.stdout
-        assert "cli-git update-mirrors --all" in result.stdout
+        assert "cli-git update-mirrors --scan | xargs" in result.stdout
         assert "cli-git update-mirrors --repo" in result.stdout
 
-        # Verify scan was called with prefix parameter
-        mock_scan.assert_called_once_with("testuser", "", None)
+        # Verify scan was called
+        mock_scan.assert_called_once_with("testuser", "")
         # Verify mirrors were saved to cache
-        mock_manager.save_scanned_mirrors.assert_called_once_with(mirrors, None)
+        mock_manager.save_scanned_mirrors.assert_called_once_with(mirrors)
+
+    @patch("cli_git.commands.update_mirrors.check_gh_auth")
+    @patch("cli_git.commands.update_mirrors.ConfigManager")
+    @patch("cli_git.commands.update_mirrors.get_current_username")
+    @patch("cli_git.commands.update_mirrors.scan_for_mirrors")
+    def test_scan_pipe_friendly_output(
+        self, mock_scan, mock_get_username, mock_config_manager, mock_check_auth, runner
+    ):
+        """Test scanning GitHub for mirrors with pipe-friendly output."""
+        mock_check_auth.return_value = True
+        mock_get_username.return_value = "testuser"
+
+        # Mock ConfigManager
+        mock_manager = MagicMock()
+        mock_config_manager.return_value = mock_manager
+        mock_manager.get_config.return_value = {
+            "github": {
+                "username": "testuser",
+                "github_token": "test_token",
+                "default_org": "",
+            },
+            "preferences": {},
+        }
+
+        # Mock scan results - found some mirrors
+        mirrors = [
+            {
+                "name": "testuser/mirror-project1",
+                "mirror": "https://github.com/testuser/mirror-project1",
+                "upstream": "https://github.com/upstream/project1",
+                "description": "Mirror of project1",
+                "is_private": False,
+                "updated_at": "2025-01-01T12:00:00Z",
+            },
+            {
+                "name": "testuser/mirror-project2",
+                "mirror": "https://github.com/testuser/mirror-project2",
+                "upstream": "",
+                "description": "",
+                "is_private": True,
+                "updated_at": "2025-01-02T12:00:00Z",
+            },
+        ]
+        mock_scan.return_value = mirrors
+        mock_manager.get_scanned_mirrors.return_value = None  # No cache
+
+        # Test without --verbose (pipe-friendly)
+        result = runner.invoke(app, ["update-mirrors", "--scan"])
+
+        assert result.exit_code == 0
+        # Should output just the repo names, one per line
+        lines = result.stdout.strip().split("\n")
+        assert len(lines) == 2
+        assert lines[0] == "testuser/mirror-project1"
+        assert lines[1] == "testuser/mirror-project2"
+        # Should not contain descriptive text
+        assert "Found" not in result.stdout
+        assert "Scanning" not in result.stdout
+
+        # Test with --verbose
+        result = runner.invoke(app, ["update-mirrors", "--scan", "--verbose"])
+
+        assert result.exit_code == 0
+        # Should contain descriptive output
+        assert "Found 2 mirror repositories" in result.stdout
+        assert "testuser/mirror-project1" in result.stdout
+        assert "Mirror of project1" in result.stdout
+        assert "To update these mirrors:" in result.stdout
 
     @patch("cli_git.commands.update_mirrors.check_gh_auth")
     @patch("cli_git.commands.update_mirrors.ConfigManager")
@@ -367,6 +467,7 @@ class TestUpdateMirrorsCommand:
             "github": {"username": "testuser", "github_token": "test_token"},
             "preferences": {},
         }
+        mock_manager.get_scanned_mirrors.return_value = None  # No scanned cache
         mock_manager.get_recent_mirrors.return_value = [
             {
                 "upstream": "https://github.com/owner1/repo1",
@@ -421,6 +522,7 @@ class TestUpdateMirrorsCommand:
             "github": {"username": "testuser", "github_token": "test_token"},
             "preferences": {},
         }
+        mock_manager.get_scanned_mirrors.return_value = None  # No scanned cache
         mock_manager.get_recent_mirrors.return_value = [
             {
                 "upstream": "https://github.com/owner/repo",
@@ -431,9 +533,13 @@ class TestUpdateMirrorsCommand:
         # Mock subprocess for workflow check (returns 0 = workflow exists)
         mock_subprocess.return_value.returncode = 0
 
-        result = runner.invoke(app, ["update-mirrors", "--all"])
+        # Simulate selecting all mirrors in interactive mode
+        with patch("cli_git.commands.update_mirrors.typer.prompt", return_value="1"):
+            result = runner.invoke(app, ["update-mirrors"])
 
         assert result.exit_code == 0
+        # First shows the interactive menu, then error
+        assert "📋 Found mirror repositories:" in result.stdout
         assert "❌ Unexpected error updating" in result.stdout
         assert "💡 For failed updates, you may need to:" in result.stdout
 

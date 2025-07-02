@@ -27,18 +27,32 @@ def update_mirrors_command(
         typer.Option(
             "--repo",
             "-r",
-            help="Specific repository to update (owner/repo)",
+            help="Specific repository to update (owner/repo). Use --scan to list available mirrors.",
             autocompletion=complete_repository,
         ),
     ] = None,
-    all: Annotated[bool, typer.Option("--all", "-a", help="Update all mirrors from cache")] = False,
-    scan: Annotated[bool, typer.Option("--scan", "-s", help="Scan GitHub for all mirrors")] = False,
-    prefix: Annotated[
-        Optional[str],
-        typer.Option("--prefix", "-p", help="Filter repositories by prefix (e.g., 'mirror-')"),
-    ] = None,
+    scan: Annotated[
+        bool,
+        typer.Option(
+            "--scan", "-s", help="Scan and list mirror repositories (outputs repo names only)"
+        ),
+    ] = False,
+    verbose: Annotated[
+        bool, typer.Option("--verbose", "-v", help="Show detailed information when scanning")
+    ] = False,
 ) -> None:
-    """Update mirror repositories with current settings."""
+    """Update mirror repositories with current settings.
+
+    Examples:
+        # Scan for mirrors (pipe-friendly output)
+        cli-git update-mirrors --scan
+
+        # Update specific mirror
+        cli-git update-mirrors --repo testuser/mirror-repo
+
+        # Update all mirrors using xargs
+        cli-git update-mirrors --scan | xargs -I {} cli-git update-mirrors --repo {}
+    """
     # Check prerequisites
     if not check_gh_auth():
         typer.echo("❌ GitHub CLI is not authenticated")
@@ -66,47 +80,51 @@ def update_mirrors_command(
 
     # Handle scan option
     if scan:
-        _handle_scan_option(config_manager, config, username, prefix)
+        _handle_scan_option(config_manager, config, username, verbose)
         return
 
     # Find mirrors to update
-    mirrors = _find_mirrors_to_update(repo, config_manager, config, username, prefix, all)
+    mirrors = _find_mirrors_to_update(repo, config_manager, config, username)
 
     # Update each mirror
     _update_mirrors(mirrors, github_token, slack_webhook_url)
 
 
 def _handle_scan_option(
-    config_manager: ConfigManager, config: dict, username: str, prefix: Optional[str]
+    config_manager: ConfigManager, config: dict, username: str, verbose: bool
 ) -> None:
     """Handle the --scan option to display mirrors without updating."""
-    typer.echo("\n🔍 Scanning GitHub for mirror repositories...")
+    if verbose:
+        typer.echo("\n🔍 Scanning GitHub for mirror repositories...")
 
     org = config["github"].get("default_org")
-    scan_prefix = prefix or config["preferences"].get("default_prefix")
-
-    if scan_prefix:
-        typer.echo(f"  Using prefix filter: '{scan_prefix}'")
 
     # Check cache first
-    cached_mirrors = config_manager.get_scanned_mirrors(scan_prefix)
+    cached_mirrors = config_manager.get_scanned_mirrors()
     if cached_mirrors is not None:
-        typer.echo("  Using cached scan results (less than 5 minutes old)")
+        if verbose:
+            typer.echo("  Using cached scan results (less than 30 minutes old)")
         mirrors = cached_mirrors
     else:
-        mirrors = scan_for_mirrors(username, org, scan_prefix)
+        mirrors = scan_for_mirrors(username, org)
         # Save to cache
-        config_manager.save_scanned_mirrors(mirrors, scan_prefix)
+        config_manager.save_scanned_mirrors(mirrors)
 
     if not mirrors:
-        typer.echo("\n❌ No mirror repositories found")
-        typer.echo(
-            "\n💡 Make sure you have mirror repositories with .github/workflows/mirror-sync.yml"
-        )
+        if verbose:
+            typer.echo("\n❌ No mirror repositories found")
+            typer.echo(
+                "\n💡 Make sure you have mirror repositories with .github/workflows/mirror-sync.yml"
+            )
         raise typer.Exit(0)
 
     # Display found mirrors
-    _display_scan_results(mirrors)
+    if verbose:
+        _display_scan_results(mirrors)
+    else:
+        # Pipe-friendly output - just repo names
+        for mirror in mirrors:
+            typer.echo(mirror.get("name", ""))
 
 
 def _display_scan_results(mirrors: list) -> None:
@@ -144,7 +162,8 @@ def _display_scan_results(mirrors: list) -> None:
 
     typer.echo("\n" + "=" * 70)
     typer.echo("\n💡 To update these mirrors:")
-    typer.echo("   • Update all: cli-git update-mirrors --all")
+    typer.echo("   • Update all mirrors:")
+    typer.echo("     cli-git update-mirrors --scan | xargs -I {} cli-git update-mirrors --repo {}")
     typer.echo("   • Update specific: cli-git update-mirrors --repo <name>")
     typer.echo("   • Interactive selection: cli-git update-mirrors")
 
@@ -156,8 +175,6 @@ def _find_mirrors_to_update(
     config_manager: ConfigManager,
     config: dict,
     username: str,
-    prefix: Optional[str],
-    all: bool,
 ) -> list:
     """Find mirrors to update based on options."""
     typer.echo("\n🔍 Finding mirrors to update...")
@@ -166,40 +183,28 @@ def _find_mirrors_to_update(
         # Specific repository
         return [{"mirror": f"https://github.com/{repo}", "upstream": "", "name": repo}]
 
-    # Check if we need to scan
-    cached_mirrors = config_manager.get_recent_mirrors()
+    # Check scanned mirrors cache first
+    mirrors = config_manager.get_scanned_mirrors()
 
-    if not cached_mirrors or prefix:
-        # Need to scan if no cache or prefix filter is specified
-        org = config["github"].get("default_org")
-        scan_prefix = prefix or config["preferences"].get("default_prefix")
-
-        if scan_prefix:
-            typer.echo(f"  Using prefix filter: '{scan_prefix}'")
-
-        # Check cache first
-        cached_mirrors = config_manager.get_scanned_mirrors(scan_prefix)
-        if cached_mirrors is not None:
-            typer.echo("  Using cached scan results")
-            mirrors = cached_mirrors
-        else:
-            typer.echo("  Scanning for mirrors...")
-            mirrors = scan_for_mirrors(username, org, scan_prefix)
-            # Save to cache
-            config_manager.save_scanned_mirrors(mirrors, scan_prefix)
+    if mirrors is None:
+        # Fall back to recent mirrors if no scanned cache
+        mirrors = config_manager.get_recent_mirrors()
 
         if not mirrors:
-            typer.echo("\n❌ No mirror repositories found")
-            if scan_prefix:
-                typer.echo(f"   No repositories found with prefix '{scan_prefix}'")
-            typer.echo("\n💡 Try without --prefix to see all mirrors")
-            raise typer.Exit(0)
-    else:
-        # Use cached mirrors
-        mirrors = cached_mirrors
+            # Need to scan
+            org = config["github"].get("default_org")
+            typer.echo("  Scanning for mirrors...")
+            mirrors = scan_for_mirrors(username, org)
+            # Save to cache
+            config_manager.save_scanned_mirrors(mirrors)
 
-    if not all:
-        mirrors = select_mirrors_interactive(mirrors)
+    if not mirrors:
+        typer.echo("\n❌ No mirror repositories found")
+        typer.echo("\n💡 Run 'cli-git update-mirrors --scan' to find mirrors")
+        raise typer.Exit(0)
+
+    # Always use interactive selection when no specific repo is provided
+    mirrors = select_mirrors_interactive(mirrors)
 
     return mirrors
 

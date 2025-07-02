@@ -16,7 +16,7 @@ def scan_for_mirrors(
     Args:
         username: GitHub username
         org: Organization name (optional)
-        prefix: Repository name prefix to filter by (optional)
+        prefix: Repository name prefix to filter by (optional, deprecated)
 
     Returns:
         List of mirror dictionaries

@@ -189,22 +189,14 @@ class TestConfigManager:
             },
         ]
 
-        # Save with prefix
-        manager.save_scanned_mirrors(mirrors, prefix="mirror-")
+        # Save mirrors
+        manager.save_scanned_mirrors(mirrors)
 
-        # Retrieve with matching prefix
-        cached = manager.get_scanned_mirrors(prefix="mirror-")
+        # Retrieve cached mirrors
+        cached = manager.get_scanned_mirrors()
         assert cached is not None
         assert len(cached) == 2
         assert cached[0]["name"] == "testuser/mirror1"
-
-        # Retrieve with different prefix - should be None
-        cached = manager.get_scanned_mirrors(prefix="fork-")
-        assert cached is None
-
-        # Retrieve without prefix when saved with prefix - should be None
-        cached = manager.get_scanned_mirrors(prefix=None)
-        assert cached is None
 
     def test_scanned_mirrors_cache_expiry(self, tmp_path):
         """Test that scanned mirrors cache expires after max_age."""
@@ -225,13 +217,13 @@ class TestConfigManager:
             # First call returns current time + 600 for age calculation
             mock_time.side_effect = [current_time + 600, current_time]
 
-            # Default max_age is 5 minutes - should be None
+            # Default max_age is 30 minutes - should work
             cached = manager.get_scanned_mirrors()
-            assert cached is None
+            assert cached is not None
 
             # Reset side_effect for next test
-            mock_time.side_effect = [current_time + 600, current_time]
+            mock_time.side_effect = [current_time + 3600, current_time]
 
-            # Increase max_age to 15 minutes - should work
-            cached = manager.get_scanned_mirrors(max_age=900)
-            assert cached is not None
+            # After 1 hour - should be None
+            cached = manager.get_scanned_mirrors()
+            assert cached is None

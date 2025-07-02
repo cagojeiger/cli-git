@@ -124,22 +124,22 @@ class ConfigManager:
 
         Args:
             mirrors: List of mirror dictionaries
-            prefix: Prefix used for scanning (optional)
+            prefix: Prefix used for scanning (optional, deprecated)
         """
         import time
 
-        cache_data = {"timestamp": time.time(), "prefix": prefix, "mirrors": mirrors}
+        cache_data = {"timestamp": time.time(), "mirrors": mirrors}
 
         self.scanned_mirrors_cache.write_text(json.dumps(cache_data, indent=2))
 
     def get_scanned_mirrors(
-        self, prefix: Optional[str] = None, max_age: int = 300
+        self, prefix: Optional[str] = None, max_age: int = 1800
     ) -> Optional[List[Dict[str, str]]]:
         """Get cached scanned mirrors if they're fresh enough.
 
         Args:
             prefix: Prefix to match (optional)
-            max_age: Maximum age in seconds (default: 5 minutes)
+            max_age: Maximum age in seconds (default: 30 minutes)
 
         Returns:
             List of mirrors if cache is valid, None otherwise
@@ -156,11 +156,6 @@ class ConfigManager:
             # Check age
             age = time.time() - cache_data.get("timestamp", 0)
             if age > max_age:
-                return None
-
-            # Check prefix match
-            cached_prefix = cache_data.get("prefix")
-            if prefix != cached_prefix:
                 return None
 
             return cache_data.get("mirrors", [])
