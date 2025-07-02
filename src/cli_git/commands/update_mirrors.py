@@ -285,44 +285,61 @@ def update_mirrors_command(
         try:
             # Get upstream URL (from cache or existing secret)
             upstream_url = mirror.get("upstream")
+
+            # Check if mirror-sync.yml exists
+            check = subprocess.run(
+                ["gh", "api", f"repos/{repo_name}/contents/.github/workflows/mirror-sync.yml"],
+                capture_output=True,
+            )
+            if check.returncode != 0:
+                typer.echo(f"  ⚠️  Skipping {repo_name}: No mirror-sync.yml found")
+                continue
+
             if not upstream_url:
-                # Try to detect if it's a mirror by checking for workflow
-                check = subprocess.run(
-                    ["gh", "api", f"repos/{repo_name}/contents/.github/workflows/mirror-sync.yml"],
-                    capture_output=True,
-                )
-                if check.returncode != 0:
-                    typer.echo(f"  ⚠️  Skipping {repo_name}: No mirror-sync.yml found")
-                    continue
+                # For existing mirrors without upstream in cache
+                typer.echo("  ✓ Existing mirror detected")
+                typer.echo("  Preserving current upstream configuration")
+                # We'll update only GH_TOKEN and SLACK_WEBHOOK_URL
+                # UPSTREAM_URL and UPSTREAM_DEFAULT_BRANCH will remain unchanged
+            else:
+                # We have upstream URL, so update everything
+                typer.echo("  Getting upstream branch info...")
+                upstream_branch = get_upstream_default_branch(upstream_url)
 
-                # For existing mirrors without upstream in cache, we need user input
-                typer.echo(f"  ⚠️  Cannot determine upstream URL for {repo_name}")
-                upstream_url = typer.prompt(
-                    "  Enter upstream URL (or 'skip' to skip)", default="skip"
-                )
-                if upstream_url.lower() == "skip":
-                    continue
+                # Update upstream-related secrets
+                typer.echo("  Updating all repository secrets...")
+                add_repo_secret(repo_name, "UPSTREAM_URL", upstream_url)
+                add_repo_secret(repo_name, "UPSTREAM_DEFAULT_BRANCH", upstream_branch)
 
-            # Get upstream default branch
-            typer.echo("  Getting upstream branch info...")
-            upstream_branch = get_upstream_default_branch(upstream_url)
-
-            # Update all secrets
-            typer.echo("  Updating repository secrets...")
-            add_repo_secret(repo_name, "UPSTREAM_URL", upstream_url)
-            add_repo_secret(repo_name, "UPSTREAM_DEFAULT_BRANCH", upstream_branch)
+            # Update additional secrets
+            if not upstream_url:
+                typer.echo("  Updating additional secrets...")
 
             if github_token:
                 add_repo_secret(repo_name, "GH_TOKEN", github_token)
+                typer.echo("    ✓ GitHub token added")
 
             if slack_webhook_url:
                 add_repo_secret(repo_name, "SLACK_WEBHOOK_URL", slack_webhook_url)
+                typer.echo("    ✓ Slack webhook added")
 
             # Update workflow file
             typer.echo("  Updating workflow file...")
-            workflow_content = generate_sync_workflow(
-                upstream_url, "0 0 * * *", upstream_branch  # Default schedule
-            )
+
+            if upstream_url:
+                # We have full information, generate new workflow
+                workflow_content = generate_sync_workflow(
+                    upstream_url, "0 0 * * *", upstream_branch  # Default schedule
+                )
+            else:
+                # No upstream URL, generate workflow with placeholders
+                # The actual values will come from existing secrets
+                workflow_content = generate_sync_workflow(
+                    "https://github.com/PLACEHOLDER/PLACEHOLDER",  # Will use secret
+                    "0 0 * * *",  # Default schedule
+                    "main",  # Default branch, will use secret
+                )
+
             update_workflow_via_api(repo_name, workflow_content)
 
             typer.echo(f"  ✅ Successfully updated {repo_name}")

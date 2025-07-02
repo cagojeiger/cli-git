@@ -123,10 +123,57 @@ class TestUpdateMirrorsCommand:
         assert result.exit_code == 0
         assert "🔄 Updating testuser/mirror-repo..." in result.stdout
 
-        # Verify secrets were updated
-        assert (
-            mock_add_secret.call_count >= 3
-        )  # At least UPSTREAM_URL, UPSTREAM_DEFAULT_BRANCH, GH_TOKEN
+        # Verify secrets were updated (only GH_TOKEN and SLACK_WEBHOOK_URL since no upstream URL)
+        assert mock_add_secret.call_count == 2
+
+        # Verify workflow was updated
+        mock_update_workflow.assert_called_once()
+
+    @patch("cli_git.commands.update_mirrors.check_gh_auth")
+    @patch("cli_git.commands.update_mirrors.ConfigManager")
+    @patch("cli_git.commands.update_mirrors.get_current_username")
+    @patch("cli_git.commands.update_mirrors.add_repo_secret")
+    @patch("cli_git.commands.update_mirrors.update_workflow_via_api")
+    @patch("subprocess.run")
+    def test_update_specific_mirror_without_upstream(
+        self,
+        mock_subprocess,
+        mock_update_workflow,
+        mock_add_secret,
+        mock_get_username,
+        mock_config_manager,
+        mock_check_auth,
+        runner,
+    ):
+        """Test updating a specific mirror repository without upstream URL in cache."""
+        mock_check_auth.return_value = True
+        mock_get_username.return_value = "testuser"
+
+        # Mock ConfigManager
+        mock_manager = MagicMock()
+        mock_config_manager.return_value = mock_manager
+        mock_manager.get_config.return_value = {
+            "github": {
+                "username": "testuser",
+                "github_token": "test_token",
+                "slack_webhook_url": "https://hooks.slack.com/test",
+            },
+            "preferences": {},
+        }
+
+        # Mock subprocess for workflow check (returns 0 = workflow exists)
+        mock_subprocess.return_value.returncode = 0
+
+        result = runner.invoke(app, ["update-mirrors", "--repo", "testuser/mirror-repo"])
+
+        # Verify the command succeeded
+        assert result.exit_code == 0
+        assert "🔄 Updating testuser/mirror-repo..." in result.stdout
+        assert "Existing mirror detected" in result.stdout
+        assert "Preserving current upstream configuration" in result.stdout
+
+        # Verify only GH_TOKEN and SLACK_WEBHOOK_URL were updated
+        assert mock_add_secret.call_count == 2
 
         # Verify workflow was updated
         mock_update_workflow.assert_called_once()
@@ -137,8 +184,10 @@ class TestUpdateMirrorsCommand:
     @patch("cli_git.commands.update_mirrors.get_upstream_default_branch")
     @patch("cli_git.commands.update_mirrors.add_repo_secret")
     @patch("cli_git.commands.update_mirrors.update_workflow_via_api")
+    @patch("subprocess.run")
     def test_update_all_mirrors_from_cache(
         self,
+        mock_subprocess,
         mock_update_workflow,
         mock_add_secret,
         mock_get_branch,
@@ -169,6 +218,9 @@ class TestUpdateMirrorsCommand:
                 "mirror": "https://github.com/testuser/mirror-repo2",
             },
         ]
+
+        # Mock subprocess for workflow check (returns 0 = workflow exists)
+        mock_subprocess.return_value.returncode = 0
 
         result = runner.invoke(app, ["update-mirrors", "--all"])
 
@@ -215,10 +267,12 @@ class TestUpdateMirrorsCommand:
     @patch("cli_git.commands.update_mirrors.get_upstream_default_branch")
     @patch("cli_git.commands.update_mirrors.add_repo_secret")
     @patch("cli_git.commands.update_mirrors.update_workflow_via_api")
+    @patch("subprocess.run")
     @patch("cli_git.commands.update_mirrors.typer.prompt")
     def test_interactive_mirror_selection(
         self,
         mock_prompt,
+        mock_subprocess,
         mock_update_workflow,
         mock_add_secret,
         mock_get_branch,
@@ -255,6 +309,9 @@ class TestUpdateMirrorsCommand:
             },
         ]
 
+        # Mock subprocess for workflow check (returns 0 = workflow exists)
+        mock_subprocess.return_value.returncode = 0
+
         result = runner.invoke(app, ["update-mirrors"])
 
         assert result.exit_code == 0
@@ -267,8 +324,10 @@ class TestUpdateMirrorsCommand:
     @patch("cli_git.commands.update_mirrors.get_upstream_default_branch")
     @patch("cli_git.commands.update_mirrors.add_repo_secret")
     @patch("cli_git.commands.update_mirrors.update_workflow_via_api")
+    @patch("subprocess.run")
     def test_update_mirror_with_error(
         self,
+        mock_subprocess,
         mock_update_workflow,
         mock_add_secret,
         mock_get_branch,
@@ -295,6 +354,9 @@ class TestUpdateMirrorsCommand:
                 "mirror": "https://github.com/testuser/mirror",
             }
         ]
+
+        # Mock subprocess for workflow check (returns 0 = workflow exists)
+        mock_subprocess.return_value.returncode = 0
 
         result = runner.invoke(app, ["update-mirrors", "--all"])
 
