@@ -20,7 +20,7 @@ class TestPrivateMirrorCommand:
     @patch("cli_git.commands.private_mirror.ConfigManager")
     @patch("cli_git.commands.private_mirror.check_gh_auth")
     @patch("cli_git.commands.private_mirror.get_current_username")
-    @patch("cli_git.commands.private_mirror.private_mirror_operation")
+    @patch("cli_git.commands.mirror.mirror_workflow.private_mirror_operation")
     def test_private_mirror_success(
         self,
         mock_mirror_operation,
@@ -58,7 +58,7 @@ class TestPrivateMirrorCommand:
         assert config_arg.upstream_url == "https://github.com/owner/repo"
         assert config_arg.target_name == "mirror-repo"
         assert config_arg.username == "testuser"
-        assert config_arg.org is None
+        assert config_arg.org == ""
         assert config_arg.schedule == "0 0 * * *"
         assert config_arg.no_sync is False
         assert config_arg.slack_webhook_url == ""
@@ -112,7 +112,7 @@ class TestPrivateMirrorCommand:
     @patch("cli_git.commands.private_mirror.check_gh_auth")
     @patch("cli_git.commands.private_mirror.get_current_username")
     @patch("cli_git.commands.private_mirror.ConfigManager")
-    @patch("cli_git.commands.private_mirror.private_mirror_operation")
+    @patch("cli_git.commands.mirror.mirror_workflow.private_mirror_operation")
     def test_private_mirror_with_custom_name(
         self, mock_mirror_operation, mock_config_manager, mock_get_username, mock_check_auth, runner
     ):
@@ -141,7 +141,7 @@ class TestPrivateMirrorCommand:
     @patch("cli_git.commands.private_mirror.check_gh_auth")
     @patch("cli_git.commands.private_mirror.get_current_username")
     @patch("cli_git.commands.private_mirror.ConfigManager")
-    @patch("cli_git.commands.private_mirror.private_mirror_operation")
+    @patch("cli_git.commands.mirror.mirror_workflow.private_mirror_operation")
     def test_private_mirror_with_organization(
         self, mock_mirror_operation, mock_config_manager, mock_get_username, mock_check_auth, runner
     ):

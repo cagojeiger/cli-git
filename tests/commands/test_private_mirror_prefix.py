@@ -20,7 +20,7 @@ class TestPrefixFeature:
     @patch("cli_git.commands.private_mirror.ConfigManager")
     @patch("cli_git.commands.private_mirror.check_gh_auth")
     @patch("cli_git.commands.private_mirror.get_current_username")
-    @patch("cli_git.commands.private_mirror.private_mirror_operation")
+    @patch("cli_git.commands.mirror.mirror_workflow.private_mirror_operation")
     def test_default_prefix_from_config(
         self,
         mock_mirror_operation,
@@ -56,7 +56,7 @@ class TestPrefixFeature:
     @patch("cli_git.commands.private_mirror.ConfigManager")
     @patch("cli_git.commands.private_mirror.check_gh_auth")
     @patch("cli_git.commands.private_mirror.get_current_username")
-    @patch("cli_git.commands.private_mirror.private_mirror_operation")
+    @patch("cli_git.commands.mirror.mirror_workflow.private_mirror_operation")
     def test_custom_prefix_option(
         self,
         mock_mirror_operation,
@@ -94,7 +94,7 @@ class TestPrefixFeature:
     @patch("cli_git.commands.private_mirror.ConfigManager")
     @patch("cli_git.commands.private_mirror.check_gh_auth")
     @patch("cli_git.commands.private_mirror.get_current_username")
-    @patch("cli_git.commands.private_mirror.private_mirror_operation")
+    @patch("cli_git.commands.mirror.mirror_workflow.private_mirror_operation")
     def test_no_prefix_option(
         self,
         mock_mirror_operation,
@@ -132,7 +132,7 @@ class TestPrefixFeature:
     @patch("cli_git.commands.private_mirror.ConfigManager")
     @patch("cli_git.commands.private_mirror.check_gh_auth")
     @patch("cli_git.commands.private_mirror.get_current_username")
-    @patch("cli_git.commands.private_mirror.private_mirror_operation")
+    @patch("cli_git.commands.mirror.mirror_workflow.private_mirror_operation")
     def test_custom_repo_name_overrides_prefix(
         self,
         mock_mirror_operation,

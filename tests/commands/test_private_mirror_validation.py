@@ -113,7 +113,9 @@ class TestPrivateMirrorValidation:
         """Test that valid inputs pass validation."""
         with patch("cli_git.commands.private_mirror.extract_repo_info") as mock_extract:
             with patch("cli_git.commands.private_mirror.get_current_username") as mock_username:
-                with patch("cli_git.commands.private_mirror.private_mirror_operation") as mock_op:
+                with patch(
+                    "cli_git.commands.mirror.mirror_workflow.private_mirror_operation"
+                ) as mock_op:
                     mock_extract.return_value = ("owner", "repo")
                     mock_username.return_value = "testuser"
                     mock_op.return_value = "https://github.com/testuser/mirror-repo"
@@ -156,7 +158,7 @@ class TestPrivateMirrorValidation:
             with patch("cli_git.commands.private_mirror.extract_repo_info") as mock_extract:
                 with patch("cli_git.commands.private_mirror.get_current_username") as mock_username:
                     with patch(
-                        "cli_git.commands.private_mirror.private_mirror_operation"
+                        "cli_git.commands.mirror.mirror_workflow.private_mirror_operation"
                     ) as mock_op:
                         # Simulate API failure
                         from cli_git.utils.gh import GitHubError
