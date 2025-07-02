@@ -287,3 +287,162 @@ class TestCompletion:
         assert len(result) == 2
         assert ("testuser/mirror-personal", "🔄 Personal mirror") in result
         assert ("myorg/mirror-shared", "🔄 Shared mirror") in result
+
+    @patch("cli_git.completion.completers.get_current_username")
+    @patch("cli_git.completion.completers.ConfigManager")
+    def test_complete_repository_with_scanned_mirrors_cache(
+        self, mock_config_manager, mock_get_username
+    ):
+        """Test repository completion using scanned mirrors cache."""
+        # Setup mocks
+        mock_get_username.return_value = "testuser"
+
+        mock_manager = MagicMock()
+        mock_config_manager.return_value = mock_manager
+
+        # Mock scanned mirrors cache
+        scanned_mirrors = [
+            {
+                "name": "testuser/mirror-cached1",
+                "description": "Cached mirror 1",
+                "mirror": "https://github.com/testuser/mirror-cached1",
+                "upstream": "https://github.com/upstream/project1",
+            },
+            {
+                "name": "testuser/mirror-cached2",
+                "description": "",
+                "mirror": "https://github.com/testuser/mirror-cached2",
+                "upstream": "",
+            },
+        ]
+        mock_manager.get_scanned_mirrors.return_value = scanned_mirrors
+
+        # Test with partial match
+        result = complete_repository("mirror-cached")
+
+        # Should return completions from scanned mirrors cache
+        assert len(result) == 2
+        assert ("testuser/mirror-cached1", "🔄 Cached mirror 1") in result
+        assert ("testuser/mirror-cached2", "🔄 Mirror repository") in result
+
+    @patch("cli_git.completion.completers.get_current_username")
+    @patch("cli_git.completion.completers.ConfigManager")
+    @patch("subprocess.run")
+    def test_complete_repository_saves_completion_cache(
+        self, mock_subprocess, mock_config_manager, mock_get_username
+    ):
+        """Test that repository completion saves cache data."""
+        # Setup mocks
+        mock_get_username.return_value = "testuser"
+
+        mock_manager = MagicMock()
+        mock_config_manager.return_value = mock_manager
+        mock_manager.get_config.return_value = {
+            "github": {"default_org": ""},
+        }
+        mock_manager.get_recent_mirrors.return_value = []
+        mock_manager.get_scanned_mirrors.return_value = None
+        mock_manager.get_repo_completion_cache.return_value = None
+
+        # Mock repository list
+        repo_list = [
+            {
+                "nameWithOwner": "testuser/repo1",
+                "description": "Repository 1",
+                "isArchived": False,
+                "updatedAt": "2025-01-01T00:00:00Z",
+            },
+            {
+                "nameWithOwner": "testuser/mirror-test",
+                "description": "Test mirror",
+                "isArchived": False,
+                "updatedAt": "2025-01-02T00:00:00Z",
+            },
+        ]
+
+        # Mock subprocess calls
+        mock_subprocess.side_effect = [
+            MagicMock(returncode=0, stdout=json.dumps(repo_list)),  # repo list
+            MagicMock(returncode=1),  # repo1 doesn't have workflow
+            MagicMock(returncode=0),  # mirror-test has workflow
+        ]
+
+        # Execute
+        complete_repository("test")
+
+        # Verify cache was saved with all repos and their mirror status
+        mock_manager.save_repo_completion_cache.assert_called_once()
+        saved_data = mock_manager.save_repo_completion_cache.call_args[0][0]
+
+        assert len(saved_data) == 2
+        assert saved_data[0]["nameWithOwner"] == "testuser/repo1"
+        assert saved_data[0]["is_mirror"] is False
+        assert saved_data[1]["nameWithOwner"] == "testuser/mirror-test"
+        assert saved_data[1]["is_mirror"] is True
+
+    @patch("cli_git.completion.completers.get_current_username")
+    @patch("cli_git.completion.completers.ConfigManager")
+    def test_complete_repository_uses_completion_cache(
+        self, mock_config_manager, mock_get_username
+    ):
+        """Test that repository completion uses cached data when available."""
+        # Setup mocks
+        mock_get_username.return_value = "testuser"
+
+        mock_manager = MagicMock()
+        mock_config_manager.return_value = mock_manager
+        mock_manager.get_recent_mirrors.return_value = []
+        mock_manager.get_scanned_mirrors.return_value = None
+
+        # Mock completion cache
+        cached_data = [
+            {
+                "nameWithOwner": "testuser/mirror-project1",
+                "description": "Project 1 mirror",
+                "is_mirror": True,
+                "updatedAt": "2025-01-01T00:00:00Z",
+            },
+            {
+                "nameWithOwner": "testuser/regular-project",
+                "description": "Regular project",
+                "is_mirror": False,
+                "updatedAt": "2025-01-02T00:00:00Z",
+            },
+            {
+                "nameWithOwner": "testuser/mirror-project2",
+                "description": "",
+                "is_mirror": True,
+                "updatedAt": "2025-01-03T00:00:00Z",
+            },
+        ]
+        mock_manager.get_repo_completion_cache.return_value = cached_data
+
+        # Test completion
+        result = complete_repository("mirror")
+
+        # Should only return mirrors from cache
+        assert len(result) == 2
+        assert ("testuser/mirror-project1", "🔄 Project 1 mirror") in result
+        assert ("testuser/mirror-project2", "🔄 Mirror repository") in result
+        # Should not include regular-project
+        assert not any("regular-project" in r[0] for r in result)
+
+    def test_get_mirror_description(self):
+        """Test _get_mirror_description helper function."""
+        from cli_git.completion.completers import _get_mirror_description
+
+        # Test with GitHub URL
+        desc = _get_mirror_description("https://github.com/owner/repo")
+        assert desc == "🔄 Mirror of owner/repo"
+
+        # Test with non-GitHub URL
+        desc = _get_mirror_description("https://gitlab.com/owner/repo")
+        assert desc == "🔄 Mirror of https://gitlab.com/owner/repo"
+
+        # Test with empty upstream
+        desc = _get_mirror_description("")
+        assert desc == "🔄 Mirror repository"
+
+        # Test with complex GitHub URL
+        desc = _get_mirror_description("https://github.com/owner/repo.git")
+        assert desc == "🔄 Mirror of owner/repo.git"

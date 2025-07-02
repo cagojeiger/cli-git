@@ -544,3 +544,126 @@ class TestUpdateMirrorsCommand:
                 assert len(mirrors) == 2
                 assert any(m["name"] == "testuser/mirror-personal" for m in mirrors)
                 assert any(m["name"] == "testorg/mirror-shared" for m in mirrors)
+
+    def test_update_workflow_file_no_changes(self):
+        """Test update_workflow_file when content hasn't changed."""
+        from cli_git.commands.modules.workflow_updater import update_workflow_file
+
+        with patch("subprocess.run") as mock_run:
+            with patch("tempfile.TemporaryDirectory") as mock_tempdir:
+                with patch("os.chdir"):
+                    with patch("os.makedirs"):
+                        with patch("os.path.exists", return_value=True):
+                            with patch(
+                                "builtins.open", mock_open(read_data="existing content")
+                            ) as mock_file:
+                                # Mock successful clone
+                                mock_run.return_value.returncode = 0
+                                mock_tempdir.return_value.__enter__.return_value = "/tmp/test"
+
+                                # Test updating workflow with same content
+                                result = update_workflow_file("owner/repo", "existing content")
+
+                                # Should return False (no changes)
+                                assert result is False
+
+                                # Verify file was read to compare
+                                mock_file.assert_called()
+
+                                # Verify no git commands were run after clone
+                                # Only clone command should have been called
+                                assert mock_run.call_count == 1
+
+    def test_update_workflow_file_with_changes(self):
+        """Test update_workflow_file when content has changed."""
+        from cli_git.commands.modules.workflow_updater import update_workflow_file
+
+        with patch("subprocess.run") as mock_run:
+            with patch("tempfile.TemporaryDirectory") as mock_tempdir:
+                with patch("os.chdir"):
+                    with patch("os.makedirs"):
+                        with patch("os.path.exists", return_value=True):
+                            with patch(
+                                "builtins.open", mock_open(read_data="old content")
+                            ) as mock_file:
+                                # Mock all git commands to succeed
+                                mock_run.return_value.returncode = 0
+                                mock_tempdir.return_value.__enter__.return_value = "/tmp/test"
+
+                                # Test updating workflow with new content
+                                result = update_workflow_file("owner/repo", "new content")
+
+                                # Should return True (changes made)
+                                assert result is True
+
+                                # Verify git commands were called
+                                # Should have: clone, add, commit, push
+                                assert mock_run.call_count >= 4
+
+                                # Verify file was written
+                                handle = mock_file()
+                                handle.write.assert_called_with("new content")
+
+    def test_update_workflow_file_clone_failure(self):
+        """Test update_workflow_file when clone fails."""
+        from cli_git.commands.modules.workflow_updater import update_workflow_file
+        from cli_git.utils.gh import GitHubError
+
+        with patch("subprocess.run") as mock_run:
+            with patch("tempfile.TemporaryDirectory") as mock_tempdir:
+                # Mock clone failure
+                mock_run.side_effect = [
+                    MagicMock(returncode=1, stderr="Clone failed"),  # First clone attempt
+                    MagicMock(returncode=1, stderr="Clone failed"),  # Second clone attempt with gh
+                ]
+                mock_tempdir.return_value.__enter__.return_value = "/tmp/test"
+
+                # Test updating workflow
+                with pytest.raises(GitHubError) as exc_info:
+                    update_workflow_file("owner/repo", "new content")
+
+                assert "Failed to clone repository" in str(exc_info.value)
+
+    def test_get_repo_secret_value(self):
+        """Test get_repo_secret_value function."""
+        from cli_git.commands.modules.workflow_updater import get_repo_secret_value
+
+        with patch("subprocess.run") as mock_run:
+            # Test non-UPSTREAM_URL secret
+            result = get_repo_secret_value("owner/repo", "GH_TOKEN")
+            assert result is None
+
+            # Test UPSTREAM_URL with workflow content
+            workflow_content = """
+name: Mirror Sync
+on:
+  schedule:
+    - cron: '0 0 * * *'
+env:
+  UPSTREAM_URL: ${{ secrets.UPSTREAM_URL }}  # UPSTREAM_URL: https://github.com/upstream/repo
+"""
+            import base64
+
+            encoded_content = base64.b64encode(workflow_content.encode()).decode()
+
+            mock_run.return_value = MagicMock(returncode=0, stdout=encoded_content + "\n")
+
+            result = get_repo_secret_value("owner/repo", "UPSTREAM_URL")
+            assert result == "https://github.com/upstream/repo"
+
+            # Test UPSTREAM_URL when secret is used but no comment
+            workflow_content2 = """
+name: Mirror Sync
+env:
+  UPSTREAM_URL: ${{ secrets.UPSTREAM_URL }}
+"""
+            encoded_content2 = base64.b64encode(workflow_content2.encode()).decode()
+            mock_run.return_value.stdout = encoded_content2 + "\n"
+
+            result = get_repo_secret_value("owner/repo", "UPSTREAM_URL")
+            assert result == ""  # Empty string indicates it's a mirror
+
+            # Test when API call fails
+            mock_run.side_effect = Exception("API error")
+            result = get_repo_secret_value("owner/repo", "UPSTREAM_URL")
+            assert result is None
