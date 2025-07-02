@@ -128,7 +128,38 @@ def complete_repository(incomplete: str) -> List[Union[str, Tuple[str, str]]]:
     completions = []
     config_manager = ConfigManager()
 
-    # Try to use cached completion data first
+    # First, check scanned mirrors cache (faster than completion cache)
+    scanned_mirrors = config_manager.get_scanned_mirrors()
+    if scanned_mirrors:
+        for mirror in scanned_mirrors:
+            mirror_name = mirror.get("name", "")
+            if not mirror_name:
+                continue
+
+            # Check if it matches the incomplete string
+            if "/" in incomplete:
+                # Full owner/repo format
+                if mirror_name.lower().startswith(incomplete.lower()):
+                    description = mirror.get("description", "Mirror repository")
+                    if not description:
+                        description = "Mirror repository"
+                    completions.append((mirror_name, f"🔄 {description}"))
+            else:
+                # Just repo name - check if repo name part matches
+                if "/" in mirror_name:
+                    _, name_only = mirror_name.split("/")
+                    if name_only.lower().startswith(incomplete.lower()):
+                        description = mirror.get("description", "Mirror repository")
+                        if not description:
+                            description = "Mirror repository"
+                        completions.append((mirror_name, f"🔄 {description}"))
+
+        # If we have results from scanned mirrors, return them
+        if completions:
+            completions.sort(key=lambda x: x[0])
+            return completions[:20]
+
+    # Try to use cached completion data
     cached_repos = config_manager.get_repo_completion_cache()
 
     if cached_repos is not None:
@@ -228,45 +259,47 @@ def complete_repository(incomplete: str) -> List[Union[str, Tuple[str, str]]]:
 
                 repos = json.loads(result.stdout)
 
-                # Filter for mirror repositories (those with mirror-sync.yml)
+                # Process all repos and save to cache data
                 for repo in repos:
                     if repo.get("isArchived", False):
                         continue
 
                     repo_name = repo["nameWithOwner"]
 
-                    # Check if it matches the incomplete string
-                    if "/" in incomplete:
-                        # Full owner/repo format
-                        if repo_name.lower().startswith(incomplete.lower()):
-                            # Check if it's a mirror by looking for workflow
-                            check = subprocess.run(
-                                [
-                                    "gh",
-                                    "api",
-                                    f"repos/{repo_name}/contents/.github/workflows/mirror-sync.yml",
-                                ],
-                                capture_output=True,
-                            )
-                            if check.returncode == 0:
+                    # Check if it's a mirror by looking for workflow
+                    check = subprocess.run(
+                        [
+                            "gh",
+                            "api",
+                            f"repos/{repo_name}/contents/.github/workflows/mirror-sync.yml",
+                        ],
+                        capture_output=True,
+                    )
+
+                    is_mirror = check.returncode == 0
+
+                    # Add to cache data
+                    repo_data = {
+                        "nameWithOwner": repo_name,
+                        "description": repo.get("description", ""),
+                        "is_mirror": is_mirror,
+                        "updatedAt": repo.get("updatedAt", ""),
+                    }
+                    all_repos_data.append(repo_data)
+
+                    # Add to completions if it's a mirror and matches
+                    if is_mirror:
+                        if "/" in incomplete:
+                            # Full owner/repo format
+                            if repo_name.lower().startswith(incomplete.lower()):
                                 description = repo.get("description", "Mirror repository")
                                 if not description:
                                     description = "Mirror repository"
                                 completions.append((repo_name, f"🔄 {description}"))
-                    else:
-                        # Just repo name - check if repo name part matches
-                        _, name_only = repo_name.split("/")
-                        if name_only.lower().startswith(repo_part.lower()):
-                            # Check if it's a mirror
-                            check = subprocess.run(
-                                [
-                                    "gh",
-                                    "api",
-                                    f"repos/{repo_name}/contents/.github/workflows/mirror-sync.yml",
-                                ],
-                                capture_output=True,
-                            )
-                            if check.returncode == 0:
+                        else:
+                            # Just repo name - check if repo name part matches
+                            _, name_only = repo_name.split("/")
+                            if name_only.lower().startswith(repo_part.lower()):
                                 description = repo.get("description", "Mirror repository")
                                 if not description:
                                     description = "Mirror repository"

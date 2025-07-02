@@ -116,6 +116,7 @@ class TestCompletion:
             "github": {"default_org": ""},
         }
         mock_manager.get_recent_mirrors.return_value = []
+        mock_manager.get_scanned_mirrors.return_value = None  # No scanned mirrors cache
         mock_manager.get_repo_completion_cache.return_value = None  # No cache
         mock_manager.save_repo_completion_cache.return_value = None
 
@@ -144,10 +145,11 @@ class TestCompletion:
 
         # Test partial repository name
         # First call returns repo list, then check for mirror-sync.yml
-        # Note: regular-repo won't be checked since it doesn't start with "mirror"
+        # Now we check ALL repos to build the cache
         mock_subprocess.side_effect = [
             MagicMock(returncode=0, stdout=json.dumps(repo_list)),  # repo list
             MagicMock(returncode=0),  # mirror-fastmcp has workflow
+            MagicMock(returncode=1),  # regular-repo doesn't have workflow
             MagicMock(returncode=0),  # mirror-typer has workflow
         ]
 
@@ -174,6 +176,7 @@ class TestCompletion:
             "github": {"default_org": ""},
         }
         mock_manager.get_recent_mirrors.return_value = []
+        mock_manager.get_scanned_mirrors.return_value = None  # No scanned mirrors cache
         mock_manager.get_repo_completion_cache.return_value = None  # No cache
         mock_manager.save_repo_completion_cache.return_value = None
 
