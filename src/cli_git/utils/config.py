@@ -24,6 +24,7 @@ class ConfigManager:
         self.cache_dir = self.config_dir / "cache"
         self.mirrors_cache = self.cache_dir / "recent_mirrors.json"
         self.scanned_mirrors_cache = self.cache_dir / "scanned_mirrors.json"
+        self.repo_completion_cache = self.cache_dir / "repo_completion.json"
 
         # Ensure directories exist
         self.config_dir.mkdir(exist_ok=True)
@@ -163,6 +164,46 @@ class ConfigManager:
                 return None
 
             return cache_data.get("mirrors", [])
+
+        except (json.JSONDecodeError, FileNotFoundError, KeyError):
+            return None
+
+    def save_repo_completion_cache(self, repos: List[Dict[str, Any]]) -> None:
+        """Save repository completion data to cache.
+
+        Args:
+            repos: List of repository data with mirror status
+        """
+        import time
+
+        cache_data = {"timestamp": time.time(), "repos": repos}
+
+        self.repo_completion_cache.write_text(json.dumps(cache_data, indent=2))
+
+    def get_repo_completion_cache(self, max_age: int = 600) -> Optional[List[Dict[str, Any]]]:
+        """Get cached repository completion data if fresh enough.
+
+        Args:
+            max_age: Maximum age in seconds (default: 10 minutes)
+
+        Returns:
+            List of repository data if cache is valid, None otherwise
+        """
+        if not self.repo_completion_cache.exists():
+            return None
+
+        try:
+            import time
+
+            content = self.repo_completion_cache.read_text()
+            cache_data = json.loads(content)
+
+            # Check age
+            age = time.time() - cache_data.get("timestamp", 0)
+            if age > max_age:
+                return None
+
+            return cache_data.get("repos", [])
 
         except (json.JSONDecodeError, FileNotFoundError, KeyError):
             return None

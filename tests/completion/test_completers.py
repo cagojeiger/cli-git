@@ -116,6 +116,8 @@ class TestCompletion:
             "github": {"default_org": ""},
         }
         mock_manager.get_recent_mirrors.return_value = []
+        mock_manager.get_repo_completion_cache.return_value = None  # No cache
+        mock_manager.save_repo_completion_cache.return_value = None
 
         # Mock repository list
         repo_list = [
@@ -172,6 +174,8 @@ class TestCompletion:
             "github": {"default_org": ""},
         }
         mock_manager.get_recent_mirrors.return_value = []
+        mock_manager.get_repo_completion_cache.return_value = None  # No cache
+        mock_manager.save_repo_completion_cache.return_value = None
 
         # Mock repository list for specific owner
         repo_list = [
@@ -220,6 +224,7 @@ class TestCompletion:
                 "name": "testuser/mirror-another",
             },
         ]
+        mock_manager.get_repo_completion_cache.return_value = None  # No cache
 
         # Make ConfigManager class always return the same mock instance
         # This ensures both instantiations return the same mock
@@ -247,6 +252,8 @@ class TestCompletion:
             "github": {"default_org": "myorg"},
         }
         mock_manager.get_recent_mirrors.return_value = []
+        mock_manager.get_repo_completion_cache.return_value = None  # No cache
+        mock_manager.save_repo_completion_cache.return_value = None
 
         # Mock repository lists for user and org
         user_repos = [

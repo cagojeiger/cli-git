@@ -8,6 +8,30 @@ from cli_git.utils.config import ConfigManager
 from cli_git.utils.gh import GitHubError, get_current_username, get_user_organizations
 
 
+def _get_mirror_description(upstream: str) -> str:
+    """Get description for a mirror based on upstream URL.
+
+    Args:
+        upstream: Upstream repository URL
+
+    Returns:
+        Formatted description string
+    """
+    if upstream:
+        # Extract upstream name
+        if "github.com/" in upstream:
+            upstream_parts = upstream.split("github.com/")[-1].split("/")
+            if len(upstream_parts) >= 2:
+                upstream_name = f"{upstream_parts[0]}/{upstream_parts[1]}"
+            else:
+                upstream_name = upstream
+        else:
+            upstream_name = upstream
+        return f"🔄 Mirror of {upstream_name}"
+    else:
+        return "🔄 Mirror repository"
+
+
 def complete_organization(incomplete: str) -> List[Union[str, Tuple[str, str]]]:
     """Complete organization names.
 
@@ -102,13 +126,68 @@ def complete_repository(incomplete: str) -> List[Union[str, Tuple[str, str]]]:
         List of tuples of (repository, description)
     """
     completions = []
+    config_manager = ConfigManager()
 
+    # Try to use cached completion data first
+    cached_repos = config_manager.get_repo_completion_cache()
+
+    if cached_repos is not None:
+        # Use cached data
+        for repo_data in cached_repos:
+            repo_name = repo_data["nameWithOwner"]
+            is_mirror = repo_data.get("is_mirror", False)
+
+            if not is_mirror:
+                continue
+
+            # Check if it matches the incomplete string
+            if "/" in incomplete:
+                # Full owner/repo format
+                if repo_name.lower().startswith(incomplete.lower()):
+                    description = repo_data.get("description", "Mirror repository")
+                    if not description:
+                        description = "Mirror repository"
+                    completions.append((repo_name, f"🔄 {description}"))
+            else:
+                # Just repo name - check if repo name part matches
+                _, name_only = repo_name.split("/")
+                if name_only.lower().startswith(incomplete.lower()):
+                    description = repo_data.get("description", "Mirror repository")
+                    if not description:
+                        description = "Mirror repository"
+                    completions.append((repo_name, f"🔄 {description}"))
+
+        # Also check recent mirrors from cache
+        recent_mirrors = config_manager.get_recent_mirrors()
+        for mirror in recent_mirrors[:10]:
+            mirror_name = mirror.get("name", "")
+            if mirror_name and not any(c[0] == mirror_name for c in completions):
+                # Check if it matches incomplete
+                if "/" in incomplete:
+                    if mirror_name.lower().startswith(incomplete.lower()):
+                        upstream = mirror.get("upstream", "")
+                        desc = _get_mirror_description(upstream)
+                        completions.append((mirror_name, desc))
+                else:
+                    # Just repo name
+                    _, name_only = (
+                        mirror_name.split("/") if "/" in mirror_name else ("", mirror_name)
+                    )
+                    if name_only.lower().startswith(incomplete.lower()):
+                        upstream = mirror.get("upstream", "")
+                        desc = _get_mirror_description(upstream)
+                        completions.append((mirror_name, desc))
+
+        # Sort and return
+        completions.sort(key=lambda x: x[0])
+        return completions[:20]
+
+    # If no cache, fall back to API calls
     try:
         # Get current username
         username = get_current_username()
 
         # Get config for organization
-        config_manager = ConfigManager()
         config = config_manager.get_config()
         default_org = config["github"].get("default_org", "")
 
@@ -123,6 +202,9 @@ def complete_repository(incomplete: str) -> List[Union[str, Tuple[str, str]]]:
             if default_org and default_org != username:
                 owners.append(default_org)
             repo_part = incomplete
+
+        # Collect all repos for caching
+        all_repos_data = []
 
         # Get repositories for each owner
         for owner in owners:
@@ -193,6 +275,10 @@ def complete_repository(incomplete: str) -> List[Union[str, Tuple[str, str]]]:
             except (subprocess.CalledProcessError, json.JSONDecodeError):
                 # Continue with next owner if this one fails
                 continue
+
+        # Save to cache for future use
+        if all_repos_data:
+            config_manager.save_repo_completion_cache(all_repos_data)
 
         # Also check recent mirrors from cache
         recent_mirrors = config_manager.get_recent_mirrors()

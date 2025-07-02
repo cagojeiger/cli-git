@@ -6,12 +6,15 @@ from typing import Optional
 from cli_git.utils.gh import GitHubError
 
 
-def update_workflow_file(repo: str, content: str) -> None:
+def update_workflow_file(repo: str, content: str) -> bool:
     """Update workflow file in repository.
 
     Args:
         repo: Repository name (owner/repo)
         content: New workflow content
+
+    Returns:
+        True if file was updated, False if no changes needed
 
     Raises:
         GitHubError: If update fails
@@ -39,8 +42,19 @@ def update_workflow_file(repo: str, content: str) -> None:
                 if clone_result.returncode != 0:
                     raise GitHubError(f"Failed to clone repository: {clone_result.stderr}")
 
-            # Update workflow file
+            # Check if workflow file exists and compare content
             workflow_path = os.path.join(tmpdir, ".github", "workflows", "mirror-sync.yml")
+            existing_content = ""
+            if os.path.exists(workflow_path):
+                with open(workflow_path, "r") as f:
+                    existing_content = f.read()
+
+            # Only update if content is different
+            if existing_content == content:
+                # No changes needed
+                return False
+
+            # Update workflow file
             os.makedirs(os.path.dirname(workflow_path), exist_ok=True)
 
             with open(workflow_path, "w") as f:
@@ -54,6 +68,8 @@ def update_workflow_file(repo: str, content: str) -> None:
                 ["git", "commit", "-m", "Update mirror sync workflow to latest version"], check=True
             )
             subprocess.run(["git", "push"], check=True)
+
+            return True
 
     except subprocess.CalledProcessError as e:
         raise GitHubError(f"Failed to update workflow: {e}")

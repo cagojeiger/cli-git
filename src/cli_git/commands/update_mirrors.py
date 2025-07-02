@@ -265,7 +265,12 @@ def _update_mirrors(mirrors: list, github_token: str, slack_webhook_url: str) ->
                 upstream_branch if upstream_url else "main",
             )
 
-            update_workflow_file(repo_name, workflow_content)
+            workflow_updated = update_workflow_file(repo_name, workflow_content)
+
+            if workflow_updated:
+                typer.echo("    ✓ Workflow file updated")
+            else:
+                typer.echo("    ✓ Workflow file already up to date")
 
             typer.echo(f"  ✅ Successfully updated {repo_name}")
             success_count += 1
