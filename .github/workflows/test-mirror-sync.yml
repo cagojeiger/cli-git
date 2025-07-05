@@ -1,0 +1,132 @@
+name: Test Mirror Sync
+
+on:
+  push:
+    paths:
+      - 'src/cli_git/core/workflow.py'
+      - 'tests/test_mirror_sync.py'
+      - 'tests/scripts/test_sync_workflow.sh'
+      - '.github/workflows/test-mirror-sync.yml'
+  pull_request:
+    paths:
+      - 'src/cli_git/core/workflow.py'
+      - 'tests/test_mirror_sync.py'
+      - 'tests/scripts/test_sync_workflow.sh'
+      - '.github/workflows/test-mirror-sync.yml'
+
+jobs:
+  unit-tests:
+    name: Python Unit Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Run unit tests
+        run: uv run pytest tests/test_mirror_sync.py -v
+
+  integration-tests:
+    name: Bash Integration Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Git
+        run: |
+          git config --global user.email "test@example.com"
+          git config --global user.name "Test User"
+          git config --global init.defaultBranch main
+
+      - name: Run integration tests
+        run: |
+          chmod +x tests/scripts/test_sync_workflow.sh
+          ./tests/scripts/test_sync_workflow.sh
+
+      - name: Run with special characters test
+        run: |
+          # Test with files containing spaces and special characters
+          KEEP_TEST_ENV=1 ./tests/scripts/test_sync_workflow.sh
+
+  workflow-validation:
+    name: Validate Generated Workflows
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Generate sample workflow
+        run: |
+          uv run python -c "
+          from cli_git.core.workflow import generate_sync_workflow
+          workflow = generate_sync_workflow(
+              'https://github.com/example/upstream.git',
+              '0 2 * * *',
+              'main'
+          )
+          with open('test-workflow.yml', 'w') as f:
+              f.write(workflow)
+          "
+
+      - name: Validate YAML syntax
+        run: |
+          # Install yamllint
+          pip install yamllint
+
+          # Create yamllint config
+          cat > .yamllint.yml << EOF
+          extends: default
+          rules:
+            line-length: disable
+            truthy:
+              allowed-values: ['true', 'false', 'on']
+          EOF
+
+          # Validate the generated workflow
+          yamllint -c .yamllint.yml test-workflow.yml
+
+      - name: Check workflow structure
+        run: |
+          # Verify key elements exist
+          grep -q "name: Mirror Sync" test-workflow.yml
+          grep -q "permissions:" test-workflow.yml
+          grep -q "mirror-only-files.txt" test-workflow.yml
+          grep -q "force-with-lease" test-workflow.yml
+
+  test-summary:
+    name: Test Summary
+    needs: [unit-tests, integration-tests, workflow-validation]
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Check test results
+        run: |
+          if [ "${{ needs.unit-tests.result }}" != "success" ] || \
+             [ "${{ needs.integration-tests.result }}" != "success" ] || \
+             [ "${{ needs.workflow-validation.result }}" != "success" ]; then
+            echo "Some tests failed!"
+            exit 1
+          else
+            echo "All tests passed!"
+          fi

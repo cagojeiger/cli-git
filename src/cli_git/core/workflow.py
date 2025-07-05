@@ -20,15 +20,10 @@ def generate_sync_workflow(upstream_url: str, schedule: str, upstream_default_br
 
 permissions:
   contents: write
-  pull-requests: write
 
 jobs:
   sync:
     runs-on: ubuntu-latest
-    outputs:
-      has_conflicts: ${{{{ steps.sync.outputs.has_conflicts }}}}
-      pr_url: ${{{{ steps.pr.outputs.pr_url }}}}
-
     steps:
       - name: Checkout mirror repository
         uses: actions/checkout@v4
@@ -36,257 +31,123 @@ jobs:
           fetch-depth: 0
           token: ${{{{ secrets.GH_TOKEN }}}}
 
-      - name: Configure git
+      - name: Identify and backup mirror-only files
         run: |
-          git config user.name "Mirror Bot"
-          git config user.email "mirror-bot@users.noreply.github.com"
+          # 백업 디렉토리 생성
+          mkdir -p /tmp/mirror-backup
 
-      - name: Sync with rebase
-        id: sync
+          # upstream 가져오기 (비교를 위해)
+          git remote add upstream ${{{{ secrets.UPSTREAM_URL }}}} || true
+          git fetch upstream --depth=1
+
+          # upstream에 없고 미러에만 있는 파일 찾기
+          echo "Finding mirror-only files..."
+          comm -23 <(git ls-files | sort) \
+                   <(git ls-tree -r upstream/HEAD --name-only | sort) \
+                   > /tmp/mirror-backup/mirror-only-files.txt
+
+          # 찾은 파일 개수 출력
+          echo "Found $(wc -l < /tmp/mirror-backup/mirror-only-files.txt) mirror-only files"
+
+          # 미러 전용 파일들 백업
+          while IFS= read -r file; do
+            if [ -f "$file" ]; then
+              # 디렉토리 구조 유지하면서 백업
+              mkdir -p "/tmp/mirror-backup/files/$(dirname "$file")"
+              cp "$file" "/tmp/mirror-backup/files/$file"
+            fi
+          done < /tmp/mirror-backup/mirror-only-files.txt
+
+          # 제거할 upstream 파일 목록 (미러에서는 필요없는 것들)
+          cat > /tmp/mirror-backup/remove-list.txt << EOF
+          .github/workflows/operator.yml
+          .github/workflows/registry-push.yml
+          EOF
+
+      - name: Complete sync from upstream
         env:
           UPSTREAM_URL: ${{{{ secrets.UPSTREAM_URL }}}}
           UPSTREAM_DEFAULT_BRANCH: ${{{{ secrets.UPSTREAM_DEFAULT_BRANCH }}}}
           GH_TOKEN: ${{{{ secrets.GH_TOKEN }}}}
         run: |
-          echo "Adding upstream remote..."
+          # Git 설정
+          git config user.name "Mirror Bot"
+          git config user.email "mirror-bot@users.noreply.github.com"
+
+          # Upstream 추가 및 가져오기
           git remote add upstream $UPSTREAM_URL || git remote set-url upstream $UPSTREAM_URL
-
-          echo "Fetching from upstream..."
           git fetch upstream
 
-          # Get upstream default branch - prefer dynamic detection
-          DETECTED_BRANCH=$(git ls-remote --symref upstream HEAD | awk '/^ref:/ {{sub(/refs\\/heads\\//, "", $2); print $2}}')
+          # 기본 브랜치 감지
+          DEFAULT_BRANCH=$(git ls-remote --symref upstream HEAD | awk '/^ref:/ {{sub(/refs\\/heads\\//, "", $2); print $2}}')
+          DEFAULT_BRANCH=${{DEFAULT_BRANCH:-$UPSTREAM_DEFAULT_BRANCH}}
 
-          if [ -n "$DETECTED_BRANCH" ]; then
-            DEFAULT_BRANCH="$DETECTED_BRANCH"
-            echo "Detected upstream branch: $DEFAULT_BRANCH"
-          elif [ -n "$UPSTREAM_DEFAULT_BRANCH" ]; then
-            DEFAULT_BRANCH="$UPSTREAM_DEFAULT_BRANCH"
-            echo "Using configured upstream branch: $DEFAULT_BRANCH"
-          else
-            echo "ERROR: Could not determine upstream default branch"
-            exit 1
-          fi
+          # 완전히 upstream으로 리셋 (충돌 불가능)
+          git reset --hard upstream/$DEFAULT_BRANCH
 
-          # Get current branch
-          CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-
-          # Save current .github directory
-          # Use mktemp for secure temporary directory
-          if [ -n "${{{{ runner.temp }}}}" ]; then
-            BACKUP_DIR=$(mktemp -d -p "${{{{ runner.temp }}}}" github-backup-XXXXXX)
-          else
-            BACKUP_DIR=$(mktemp -d /tmp/github-backup-XXXXXX)
-          fi
-          echo "Backup directory: $BACKUP_DIR"
-
-          if [ -d .github ]; then
-            cp -r .github "$BACKUP_DIR/"
-          fi
-
-          echo "Attempting rebase..."
-          if git rebase upstream/$DEFAULT_BRANCH; then
-            echo "✅ Rebase successful"
-
-            # Restore our .github directory
-            rm -rf .github
-            if [ -d "$BACKUP_DIR/.github" ]; then
-              cp -r "$BACKUP_DIR/.github" .
-              git add .github
-              git commit -m "Restore .github directory" || echo "No changes to .github directory"
-            else
-              echo "WARNING: No .github directory to restore"
-            fi
-
-            # Cleanup backup
-            rm -rf "$BACKUP_DIR"
-
-            git push origin $CURRENT_BRANCH --force-with-lease
-            echo "has_conflicts=false" >> $GITHUB_OUTPUT
-          else
-            echo "❌ Rebase conflicts detected"
-            echo "has_conflicts=true" >> $GITHUB_OUTPUT
-            git rebase --abort
-          fi
-
-      - name: Create PR if conflicts
-        if: steps.sync.outputs.has_conflicts == 'true'
-        id: pr
-        env:
-          GH_TOKEN: ${{{{ secrets.GH_TOKEN }}}}
+      - name: Apply mirror customizations
         run: |
-          # Create branch for conflict resolution with unique name
-          BRANCH_NAME="sync/upstream-$(date +%Y%m%d-%H%M%S)-${{{{ github.run_id }}}}"
-          git checkout -b $BRANCH_NAME
-
-          # Add upstream as remote and fetch
-          git fetch upstream
-
-          # Get upstream default branch - prefer dynamic detection
-          DETECTED_BRANCH=$(git ls-remote --symref upstream HEAD | awk '/^ref:/ {{sub(/refs\\/heads\\//, "", $2); print $2}}')
-
-          if [ -n "$DETECTED_BRANCH" ]; then
-            DEFAULT_BRANCH="$DETECTED_BRANCH"
-          elif [ -n "${{{{ secrets.UPSTREAM_DEFAULT_BRANCH }}}}" ]; then
-            DEFAULT_BRANCH="${{{{ secrets.UPSTREAM_DEFAULT_BRANCH }}}}"
-          else
-            echo "ERROR: Could not determine upstream default branch"
-            exit 1
+          # 미러 전용 파일들 복원
+          if [ -s /tmp/mirror-backup/mirror-only-files.txt ]; then
+            echo "Restoring mirror-only files..."
+            while IFS= read -r file; do
+              if [ -f "/tmp/mirror-backup/files/$file" ]; then
+                # 디렉토리가 없으면 생성
+                mkdir -p "$(dirname "$file")"
+                cp "/tmp/mirror-backup/files/$file" "$file"
+              fi
+            done < /tmp/mirror-backup/mirror-only-files.txt
           fi
 
-          # Try merge instead of rebase for conflict resolution
-          git merge upstream/$DEFAULT_BRANCH --no-edit || true
+          # 불필요한 upstream 파일 제거
+          echo "Removing unnecessary upstream files..."
+          while IFS= read -r file; do
+            rm -f "$file"
+          done < /tmp/mirror-backup/remove-list.txt
 
-          # Commit the conflict state
+          # 변경사항 확인 및 커밋
           git add -A
-          git commit -m "🔴 Merge conflict from upstream - manual resolution required" || true
-          git push origin $BRANCH_NAME
+          if ! git diff --cached --quiet; then
+            MIRROR_FILES=$(wc -l < /tmp/mirror-backup/mirror-only-files.txt)
+            git commit -m "♻️ Sync from upstream + preserve $MIRROR_FILES mirror-only files"
+          else
+            echo "No changes to commit"
+          fi
 
-          # Get the default branch of the current repository
-          CURRENT_DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@')
-
-          # Create PR
-          PR_URL=$(gh pr create \\
-            --title "🔴 [Conflict] Sync from upstream" \\
-            --body "⚠️ Merge conflicts detected. Please resolve manually and merge." \\
-            --base $CURRENT_DEFAULT_BRANCH \\
-            --head $BRANCH_NAME)
-
-          echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
+      - name: Push changes
+        run: |
+          git push origin main --force-with-lease
 
       - name: Sync tags
-        if: steps.sync.outputs.has_conflicts == 'false'
         env:
           GH_TOKEN: ${{{{ secrets.GH_TOKEN }}}}
         run: |
-          echo "Syncing tags..."
-
-          # Configure git to use GH_TOKEN if available
-          if [ -n "$GH_TOKEN" ]; then
-            echo "Using GH_TOKEN for authentication"
-            # 더 명시적으로 origin remote URL을 GH_TOKEN을 사용하도록 설정
-            git remote set-url origin https://x-access-token:${{GH_TOKEN}}@github.com/${{{{ github.repository }}}}
-          else
-            echo "Warning: GH_TOKEN not found. Tag sync may fail if tags contain workflow files."
-          fi
-
+          # 태그 가져오기 및 푸시
           git fetch upstream --tags
           git push origin --tags --force
 
-  notify-slack-failure:
+  notify-failure:
     needs: sync
     if: failure()
     runs-on: ubuntu-latest
-
     steps:
-      - name: Check for Slack webhook
-        id: check_webhook
-        run: |
-          if [[ -n "${{{{ secrets.SLACK_WEBHOOK_URL }}}}" ]]; then
-            echo "has_webhook=true" >> $GITHUB_OUTPUT
-          else
-            echo "has_webhook=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Send Slack notification for failure
-        if: steps.check_webhook.outputs.has_webhook == 'true'
+      - name: Send Slack notification
+        if: env.SLACK_WEBHOOK_URL != ''
+        env:
+          SLACK_WEBHOOK_URL: ${{{{ secrets.SLACK_WEBHOOK_URL }}}}
         uses: slackapi/slack-github-action@v2.0.0
         with:
-          webhook: ${{{{ secrets.SLACK_WEBHOOK_URL }}}}
+          webhook: ${{{{ env.SLACK_WEBHOOK_URL }}}}
           webhook-type: incoming-webhook
           payload: |
             {{
-              "text": "❌ Workflow Failed",
+              "text": "❌ Mirror Sync Failed",
               "blocks": [
                 {{
                   "type": "section",
                   "text": {{
                     "type": "mrkdwn",
-                    "text": "❌ *Workflow Failed*"
-                  }}
-                }},
-                {{
-                  "type": "section",
-                  "fields": [
-                    {{
-                      "type": "mrkdwn",
-                      "text": "*Workflow:*\\nMirror Sync"
-                    }},
-                    {{
-                      "type": "mrkdwn",
-                      "text": "*Repository:*\\n${{{{ github.repository }}}}"
-                    }}
-                  ]
-                }},
-                {{
-                  "type": "section",
-                  "fields": [
-                    {{
-                      "type": "mrkdwn",
-                      "text": "*Actor:*\\n${{{{ github.actor }}}}"
-                    }},
-                    {{
-                      "type": "mrkdwn",
-                      "text": "*Branch:*\\n${{{{ github.ref_name }}}}"
-                    }}
-                  ]
-                }},
-                {{
-                  "type": "section",
-                  "text": {{
-                    "type": "mrkdwn",
-                    "text": "*Workflow URL:*\\n<${{{{ github.server_url }}}}/${{{{ github.repository }}}}/actions/runs/${{{{ github.run_id }}}}|View Failed Workflow>"
-                  }}
-                }},
-                {{
-                  "type": "context",
-                  "elements": [
-                    {{
-                      "type": "mrkdwn",
-                      "text": "Click the link above to view the failed workflow details"
-                    }}
-                  ]
-                }}
-              ]
-            }}
-
-  notify-slack-conflict:
-    needs: sync
-    if: needs.sync.outputs.has_conflicts == 'true'
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Check for Slack webhook
-        id: check_webhook
-        run: |
-          if [[ -n "${{{{ secrets.SLACK_WEBHOOK_URL }}}}" ]]; then
-            echo "has_webhook=true" >> $GITHUB_OUTPUT
-          else
-            echo "has_webhook=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Send Slack notification for conflict
-        if: steps.check_webhook.outputs.has_webhook == 'true'
-        uses: slackapi/slack-github-action@v2.0.0
-        with:
-          webhook: ${{{{ secrets.SLACK_WEBHOOK_URL }}}}
-          webhook-type: incoming-webhook
-          payload: |
-            {{
-              "text": "⚠️ Mirror sync conflict detected",
-              "blocks": [
-                {{
-                  "type": "section",
-                  "text": {{
-                    "type": "mrkdwn",
-                    "text": "*⚠️ Mirror Sync Conflict*\\nManual intervention required"
-                  }}
-                }},
-                {{
-                  "type": "section",
-                  "text": {{
-                    "type": "mrkdwn",
-                    "text": "*Repository:* `${{{{ github.repository }}}}`\\n*PR:* <${{{{ needs.sync.outputs.pr_url }}}}|View Pull Request>"
+                    "text": "❌ *Mirror Sync Failed*\\n*Repository:* `${{{{ github.repository }}}}`\\n*Workflow:* <${{{{ github.server_url }}}}/${{{{ github.repository }}}}/actions/runs/${{{{ github.run_id }}}}|View Details>"
                   }}
                 }}
               ]
