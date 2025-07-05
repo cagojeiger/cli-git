@@ -237,7 +237,9 @@ class TestCompletion:
 
         assert len(result) == 2
         assert any("mirror-cached" in r[0] for r in result)
-        assert any("from cache" in r[1] for r in result)
+        # Check that result contains description from cache
+        # The description will be from _get_mirror_description() for upstream URLs
+        assert any("Mirror of upstream/project" in r[1] for r in result)
 
     @patch("cli_git.completion.completers.get_current_username")
     @patch("cli_git.completion.completers.ConfigManager")
