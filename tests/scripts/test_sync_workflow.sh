@@ -40,6 +40,7 @@ setup_test_env() {
     mkdir upstream
     cd upstream
     git init --quiet
+    git config init.defaultBranch main
     echo "# Upstream Project" > README.md
     echo "print('hello world')" > main.py
     mkdir -p .github/workflows
@@ -89,7 +90,7 @@ test_basic_sync() {
 
     # Find mirror-only files
     comm -23 <(git ls-files | sort) \
-             <(git ls-tree -r upstream/master --name-only | sort) \
+             <(git ls-tree -r upstream/main --name-only | sort) \
              > mirror-only-files.txt
 
     # Backup mirror files
@@ -102,7 +103,7 @@ test_basic_sync() {
     done < mirror-only-files.txt
 
     # Reset to upstream
-    git reset --hard upstream/master --quiet
+    git reset --hard upstream/main --quiet
 
     # Restore mirror files
     while IFS= read -r file; do
@@ -154,7 +155,7 @@ test_special_filenames() {
 
     # Run sync process
     comm -23 <(git ls-files | sort) \
-             <(git ls-tree -r upstream/master --name-only | sort) \
+             <(git ls-tree -r upstream/main --name-only | sort) \
              > mirror-only-files.txt
 
     # Check if special files are detected
@@ -181,7 +182,7 @@ test_no_mirror_files() {
     git fetch upstream --quiet
 
     comm -23 <(git ls-files | sort) \
-             <(git ls-tree -r upstream/master --name-only | sort) \
+             <(git ls-tree -r upstream/main --name-only | sort) \
              > mirror-only-files.txt
 
     if [ ! -s mirror-only-files.txt ]; then
@@ -212,7 +213,7 @@ test_conflicting_names() {
     git fetch upstream --quiet
 
     # After sync, upstream version should win
-    git reset --hard upstream/master --quiet
+    git reset --hard upstream/main --quiet
 
     if grep -q "upstream version" conflict.txt; then
         success "Conflicting files handled correctly (upstream wins)"
