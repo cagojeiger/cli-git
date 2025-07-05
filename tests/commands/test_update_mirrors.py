@@ -773,3 +773,109 @@ env:
             mock_run.side_effect = Exception("API error")
             result = get_repo_secret_value("owner/repo", "UPSTREAM_URL")
             assert result is None
+
+    @patch("cli_git.commands.update_mirrors.check_gh_auth")
+    @patch("cli_git.commands.update_mirrors.ConfigManager")
+    @patch("cli_git.commands.update_mirrors.get_current_username")
+    @patch("cli_git.commands.update_mirrors.get_upstream_default_branch")
+    @patch("cli_git.commands.update_mirrors.add_repo_secret")
+    @patch("cli_git.commands.update_mirrors.update_workflow_file")
+    @patch("cli_git.commands.update_mirrors.subprocess.run")
+    def test_update_mirror_creates_mirrorkeep(
+        self,
+        mock_subprocess,
+        mock_update_workflow,
+        mock_add_secret,
+        mock_get_branch,
+        mock_get_username,
+        mock_config_manager,
+        mock_check_auth,
+        runner,
+    ):
+        """Test that update-mirrors creates .mirrorkeep file if missing."""
+        mock_check_auth.return_value = True
+        mock_get_username.return_value = "testuser"
+        mock_get_branch.return_value = "main"
+
+        # Mock ConfigManager
+        mock_manager = MagicMock()
+        mock_config_manager.return_value = mock_manager
+        mock_manager.get_config.return_value = {
+            "github": {
+                "username": "testuser",
+                "github_token": "test_token",
+                "slack_webhook_url": "",
+            },
+            "preferences": {},
+        }
+
+        # Mock subprocess for workflow check (returns 0 = workflow exists)
+        mock_subprocess.return_value.returncode = 0
+
+        # Mock to simulate .mirrorkeep doesn't exist initially
+        with patch(
+            "cli_git.commands.update_mirrors.create_mirrorkeep_if_missing"
+        ) as mock_create_mirrorkeep:
+            mock_create_mirrorkeep.return_value = True  # File was created
+
+            result = runner.invoke(app, ["update-mirrors", "--repo", "testuser/mirror-repo"])
+
+            # Verify the command succeeded
+            assert result.exit_code == 0
+            assert "🔄 Updating testuser/mirror-repo..." in result.stdout
+
+            # Verify mirrorkeep creation was attempted
+            mock_create_mirrorkeep.assert_called_once()
+
+    @patch("cli_git.commands.update_mirrors.check_gh_auth")
+    @patch("cli_git.commands.update_mirrors.ConfigManager")
+    @patch("cli_git.commands.update_mirrors.get_current_username")
+    @patch("cli_git.commands.update_mirrors.get_upstream_default_branch")
+    @patch("cli_git.commands.update_mirrors.add_repo_secret")
+    @patch("cli_git.commands.update_mirrors.update_workflow_file")
+    @patch("cli_git.commands.update_mirrors.subprocess.run")
+    def test_update_mirror_preserves_existing_mirrorkeep(
+        self,
+        mock_subprocess,
+        mock_update_workflow,
+        mock_add_secret,
+        mock_get_branch,
+        mock_get_username,
+        mock_config_manager,
+        mock_check_auth,
+        runner,
+    ):
+        """Test that update-mirrors preserves existing .mirrorkeep file."""
+        mock_check_auth.return_value = True
+        mock_get_username.return_value = "testuser"
+        mock_get_branch.return_value = "main"
+
+        # Mock ConfigManager
+        mock_manager = MagicMock()
+        mock_config_manager.return_value = mock_manager
+        mock_manager.get_config.return_value = {
+            "github": {
+                "username": "testuser",
+                "github_token": "test_token",
+                "slack_webhook_url": "",
+            },
+            "preferences": {},
+        }
+
+        # Mock subprocess for workflow check (returns 0 = workflow exists)
+        mock_subprocess.return_value.returncode = 0
+
+        # Mock to simulate .mirrorkeep already exists
+        with patch(
+            "cli_git.commands.update_mirrors.create_mirrorkeep_if_missing"
+        ) as mock_create_mirrorkeep:
+            mock_create_mirrorkeep.return_value = False  # File already exists
+
+            result = runner.invoke(app, ["update-mirrors", "--repo", "testuser/mirror-repo"])
+
+            # Verify the command succeeded
+            assert result.exit_code == 0
+            assert "🔄 Updating testuser/mirror-repo..." in result.stdout
+
+            # Verify mirrorkeep creation was attempted but file already existed
+            mock_create_mirrorkeep.assert_called_once()
