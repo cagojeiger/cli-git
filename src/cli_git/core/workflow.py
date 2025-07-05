@@ -81,6 +81,16 @@ jobs:
           # Get current branch
           CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 
+          # Remove known conflicting files that were deleted in mirror
+          echo "Removing known conflicting workflow files..."
+          git rm -f .github/workflows/operator.yml 2>/dev/null || true
+          git rm -f .github/workflows/registry-push.yml 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "No conflicting files to remove"
+          else
+            git commit -m "Remove conflicting workflow files before sync"
+          fi
+
           echo "Attempting rebase..."
           if git rebase upstream/$DEFAULT_BRANCH; then
             echo "✅ Rebase successful"
