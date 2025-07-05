@@ -137,31 +137,46 @@ class TestWorkflow:
         # Should NOT use rebase
         assert "git rebase upstream/$DEFAULT_BRANCH" not in workflow_yaml
 
-    def test_backup_includes_custom_files_list(self):
-        """Test that backup saves list of custom user files."""
+    def test_backup_uses_mirrorkeep(self):
+        """Test that backup uses .mirrorkeep file."""
         workflow_yaml = generate_sync_workflow(
             upstream_url="https://github.com/owner/repo",
             schedule="0 0 * * *",
             upstream_default_branch="main",
         )
 
-        # Should detect custom files
-        assert 'find .github -type f ! -name "mirror-sync.yml"' in workflow_yaml
-        # Should save list to file
-        assert "$BACKUP_DIR/custom_files.txt" in workflow_yaml
+        # Should check for .mirrorkeep file
+        assert "if [ -f .mirrorkeep ]; then" in workflow_yaml
+        # Should read patterns from .mirrorkeep
+        assert "while IFS= read -r pattern" in workflow_yaml
+        assert "done < .mirrorkeep" in workflow_yaml
 
-    def test_restore_preserves_custom_files(self):
-        """Test that restore process preserves user's custom files."""
+    def test_creates_default_mirrorkeep(self):
+        """Test that workflow creates default .mirrorkeep if missing."""
         workflow_yaml = generate_sync_workflow(
             upstream_url="https://github.com/owner/repo",
             schedule="0 0 * * *",
             upstream_default_branch="main",
         )
 
-        # Should have custom file restore logic
-        assert "Restoring custom files..." in workflow_yaml
-        assert "while IFS= read -r file" in workflow_yaml
-        assert "Restored: $file" in workflow_yaml
+        # Should create default .mirrorkeep if not found
+        assert "if [ ! -f .mirrorkeep ]; then" in workflow_yaml
+        assert "cat > .mirrorkeep << 'EOF'" in workflow_yaml
+        assert ".github/workflows/mirror-sync.yml" in workflow_yaml
+        assert ".mirrorkeep" in workflow_yaml
+
+    def test_mirrorkeep_based_restore(self):
+        """Test that restore uses backed up files."""
+        workflow_yaml = generate_sync_workflow(
+            upstream_url="https://github.com/owner/repo",
+            schedule="0 0 * * *",
+            upstream_default_branch="main",
+        )
+
+        # Should restore from backup directory
+        assert 'cd "$BACKUP_DIR"' in workflow_yaml
+        assert "find . -type f" in workflow_yaml
+        assert 'cp "$file" "$ORIGINAL_DIR/$file"' in workflow_yaml
 
     def test_no_conflict_handling(self):
         """Test that conflict handling is removed since reset doesn't create conflicts."""

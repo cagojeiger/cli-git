@@ -57,8 +57,10 @@ jobs:
           # Get current branch
           CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 
-          # Save current .github directory
-          # Use mktemp for secure temporary directory
+          # Save original directory
+          ORIGINAL_DIR=$(pwd)
+
+          # Create backup directory
           if [ -n "${{ runner.temp }}" ]; then
             BACKUP_DIR=$(mktemp -d -p "${{ runner.temp }}" github-backup-XXXXXX)
           else
@@ -66,43 +68,71 @@ jobs:
           fi
           echo "Backup directory: $BACKUP_DIR"
 
-          if [ -d .github ]; then
-            cp -r .github "$BACKUP_DIR/"
-            # Save list of custom files (everything except mirror-sync.yml)
-            find .github -type f ! -name "mirror-sync.yml" | sort > "$BACKUP_DIR/custom_files.txt"
-            echo "Custom files detected:"
-            cat "$BACKUP_DIR/custom_files.txt"
+          # Check for .mirrorkeep file
+          if [ ! -f .mirrorkeep ]; then
+            echo "WARNING: .mirrorkeep not found, creating default..."
+            cat > .mirrorkeep << 'EOF'
+          # .mirrorkeep - Files to preserve during mirror sync
+          .github/workflows/mirror-sync.yml
+          .mirrorkeep
+          EOF
+          fi
+
+          # Backup files based on .mirrorkeep patterns
+          echo "Backing up files from .mirrorkeep patterns..."
+          if [ -f .mirrorkeep ]; then
+            while IFS= read -r pattern; do
+              # Skip comments and empty lines
+              [[ -z "$pattern" || "$pattern" =~ ^[[:space:]]*# ]] && continue
+
+              # Skip exclusion patterns (we'll handle them during matching)
+              [[ "$pattern" == !* ]] && continue
+
+              # Find files matching the pattern
+              if [[ "$pattern" == */ ]]; then
+                # Directory pattern
+                find . -path "./$pattern*" -type f 2>/dev/null
+              else
+                # File pattern
+                find . -path "./$pattern" -type f 2>/dev/null
+              fi | while read -r file; do
+                # Create directory structure in backup
+                rel_path="${file#./}"
+                mkdir -p "$BACKUP_DIR/$(dirname "$rel_path")"
+                cp "$file" "$BACKUP_DIR/$rel_path"
+                echo "Backed up: $rel_path"
+              done
+            done < .mirrorkeep
           fi
 
           echo "Syncing with upstream using reset..."
           git reset --hard upstream/$DEFAULT_BRANCH
           echo "✅ Reset to upstream successful"
 
-          # Restore our .github directory
-          echo "Restoring .github directory..."
+          # Clean .github directory
+          echo "Cleaning .github directory..."
           rm -rf .github
 
-          if [ -d "$BACKUP_DIR/.github" ]; then
-            # First restore mirror-sync.yml
-            mkdir -p .github/workflows
-            cp "$BACKUP_DIR/.github/workflows/mirror-sync.yml" .github/workflows/ 2>/dev/null || true
+          # Restore backed up files
+          echo "Restoring files from backup..."
+          cd "$BACKUP_DIR"
+          if [ -n "$(find . -type f 2>/dev/null)" ]; then
+            find . -type f | while read -r file; do
+              # Remove leading ./
+              file="${file#./}"
+              # Create directory structure
+              mkdir -p "$ORIGINAL_DIR/$(dirname "$file")"
+              # Copy file
+              cp "$file" "$ORIGINAL_DIR/$file"
+              echo "Restored: $file"
+            done
 
-            # Then restore custom files if any
-            if [ -f "$BACKUP_DIR/custom_files.txt" ]; then
-              echo "Restoring custom files..."
-              while IFS= read -r file; do
-                if [ -f "$BACKUP_DIR/$file" ]; then
-                  mkdir -p "$(dirname "$file")"
-                  cp "$BACKUP_DIR/$file" "$file"
-                  echo "Restored: $file"
-                fi
-              done < "$BACKUP_DIR/custom_files.txt"
-            fi
-
-            git add .github
-            git commit -m "Restore .github directory" || echo "No changes to .github directory"
+            cd "$ORIGINAL_DIR"
+            git add -A
+            git commit -m "Restore files from .mirrorkeep" || echo "No changes to commit"
           else
-            echo "WARNING: No .github directory to restore"
+            cd "$ORIGINAL_DIR"
+            echo "WARNING: No files to restore from backup"
           fi
 
           # Cleanup backup
