@@ -37,6 +37,11 @@ jobs:
           echo "Adding upstream remote..."
           git remote add upstream $UPSTREAM_URL || git remote set-url upstream $UPSTREAM_URL
 
+          # Configure sparse-checkout to exclude .github directory
+          echo "Configuring sparse-checkout to exclude .github directory..."
+          git sparse-checkout init --cone
+          git sparse-checkout set '/*' '!/.github'
+
           echo "Fetching from upstream..."
           git fetch upstream
 
@@ -57,35 +62,9 @@ jobs:
           # Get current branch
           CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 
-          # Save current .github directory
-          # Use mktemp for secure temporary directory
-          if [ -n "${{ runner.temp }}" ]; then
-            BACKUP_DIR=$(mktemp -d -p "${{ runner.temp }}" github-backup-XXXXXX)
-          else
-            BACKUP_DIR=$(mktemp -d /tmp/github-backup-XXXXXX)
-          fi
-          echo "Backup directory: $BACKUP_DIR"
-
-          if [ -d .github ]; then
-            cp -r .github "$BACKUP_DIR/"
-          fi
-
           echo "Attempting rebase..."
           if git rebase upstream/$DEFAULT_BRANCH; then
             echo "✅ Rebase successful"
-
-            # Restore our .github directory
-            rm -rf .github
-            if [ -d "$BACKUP_DIR/.github" ]; then
-              cp -r "$BACKUP_DIR/.github" .
-              git add .github
-              git commit -m "Restore .github directory" || echo "No changes to .github directory"
-            else
-              echo "WARNING: No .github directory to restore"
-            fi
-
-            # Cleanup backup
-            rm -rf "$BACKUP_DIR"
 
             git push origin $CURRENT_BRANCH --force-with-lease
             echo "has_conflicts=false" >> $GITHUB_OUTPUT
@@ -101,6 +80,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
+          # Disable sparse-checkout for conflict resolution
+          git sparse-checkout disable
+
           # Create branch for conflict resolution with unique name
           BRANCH_NAME="sync/upstream-$(date +%Y%m%d-%H%M%S)-${{ github.run_id }}"
           git checkout -b $BRANCH_NAME
@@ -120,21 +102,38 @@ jobs:
             exit 1
           fi
 
-          # Try merge instead of rebase for conflict resolution
-          git merge upstream/$DEFAULT_BRANCH --no-edit || true
+          # Save current .github directory
+          BACKUP_DIR=$(mktemp -d)
+          if [ -d .github ]; then
+            cp -r .github "$BACKUP_DIR/"
+          fi
+
+          # Try merge with strategy to prefer our .github files
+          git merge upstream/$DEFAULT_BRANCH --no-edit --strategy-option=ours || true
+
+          # Restore our .github directory
+          if [ -d "$BACKUP_DIR/.github" ]; then
+            rm -rf .github
+            cp -r "$BACKUP_DIR/.github" .
+            git add .github
+          fi
+
+          # Cleanup backup
+          rm -rf "$BACKUP_DIR"
 
           # Commit the conflict state
           git add -A
-          git commit -m "🔴 Merge conflict from upstream - manual resolution required" || true
+          git commit -m "🔴 Merge conflict from upstream - manual resolution required (.github excluded)" || true
           git push origin $BRANCH_NAME
 
           # Get the default branch of the current repository
           CURRENT_DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@')
 
           # Create PR
+          PR_BODY="⚠️ Merge conflicts detected. Please resolve manually and merge."$'\n\n'"Note: .github directory has been excluded from sync to prevent workflow conflicts."
           PR_URL=$(gh pr create \
             --title "🔴 [Conflict] Sync from upstream" \
-            --body "⚠️ Merge conflicts detected. Please resolve manually and merge." \
+            --body "$PR_BODY" \
             --base $CURRENT_DEFAULT_BRANCH \
             --head $BRANCH_NAME)
 
