@@ -27,7 +27,7 @@ jobs:
           git config user.name "Mirror Bot"
           git config user.email "mirror-bot@users.noreply.github.com"
 
-      - name: Sync with rebase
+      - name: Sync with reset
         id: sync
         env:
           UPSTREAM_URL: ${{ secrets.UPSTREAM_URL }}
@@ -68,77 +68,49 @@ jobs:
 
           if [ -d .github ]; then
             cp -r .github "$BACKUP_DIR/"
+            # Save list of custom files (everything except mirror-sync.yml)
+            find .github -type f ! -name "mirror-sync.yml" | sort > "$BACKUP_DIR/custom_files.txt"
+            echo "Custom files detected:"
+            cat "$BACKUP_DIR/custom_files.txt"
           fi
 
-          echo "Attempting rebase..."
-          if git rebase upstream/$DEFAULT_BRANCH; then
-            echo "✅ Rebase successful"
+          echo "Syncing with upstream using reset..."
+          git reset --hard upstream/$DEFAULT_BRANCH
+          echo "✅ Reset to upstream successful"
 
-            # Restore our .github directory
-            rm -rf .github
-            if [ -d "$BACKUP_DIR/.github" ]; then
-              cp -r "$BACKUP_DIR/.github" .
-              git add .github
-              git commit -m "Restore .github directory" || echo "No changes to .github directory"
-            else
-              echo "WARNING: No .github directory to restore"
+          # Restore our .github directory
+          echo "Restoring .github directory..."
+          rm -rf .github
+
+          if [ -d "$BACKUP_DIR/.github" ]; then
+            # First restore mirror-sync.yml
+            mkdir -p .github/workflows
+            cp "$BACKUP_DIR/.github/workflows/mirror-sync.yml" .github/workflows/ 2>/dev/null || true
+
+            # Then restore custom files if any
+            if [ -f "$BACKUP_DIR/custom_files.txt" ]; then
+              echo "Restoring custom files..."
+              while IFS= read -r file; do
+                if [ -f "$BACKUP_DIR/$file" ]; then
+                  mkdir -p "$(dirname "$file")"
+                  cp "$BACKUP_DIR/$file" "$file"
+                  echo "Restored: $file"
+                fi
+              done < "$BACKUP_DIR/custom_files.txt"
             fi
 
-            # Cleanup backup
-            rm -rf "$BACKUP_DIR"
-
-            git push origin $CURRENT_BRANCH --force-with-lease
-            echo "has_conflicts=false" >> $GITHUB_OUTPUT
+            git add .github
+            git commit -m "Restore .github directory" || echo "No changes to .github directory"
           else
-            echo "❌ Rebase conflicts detected"
-            echo "has_conflicts=true" >> $GITHUB_OUTPUT
-            git rebase --abort
+            echo "WARNING: No .github directory to restore"
           fi
 
-      - name: Create PR if conflicts
-        if: steps.sync.outputs.has_conflicts == 'true'
-        id: pr
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
-        run: |
-          # Create branch for conflict resolution with unique name
-          BRANCH_NAME="sync/upstream-$(date +%Y%m%d-%H%M%S)-${{ github.run_id }}"
-          git checkout -b $BRANCH_NAME
+          # Cleanup backup
+          rm -rf "$BACKUP_DIR"
 
-          # Add upstream as remote and fetch
-          git fetch upstream
+          git push origin $CURRENT_BRANCH --force
+          echo "has_conflicts=false" >> $GITHUB_OUTPUT
 
-          # Get upstream default branch - prefer dynamic detection
-          DETECTED_BRANCH=$(git ls-remote --symref upstream HEAD | awk '/^ref:/ {sub(/refs\/heads\//, "", $2); print $2}')
-
-          if [ -n "$DETECTED_BRANCH" ]; then
-            DEFAULT_BRANCH="$DETECTED_BRANCH"
-          elif [ -n "${{ secrets.UPSTREAM_DEFAULT_BRANCH }}" ]; then
-            DEFAULT_BRANCH="${{ secrets.UPSTREAM_DEFAULT_BRANCH }}"
-          else
-            echo "ERROR: Could not determine upstream default branch"
-            exit 1
-          fi
-
-          # Try merge instead of rebase for conflict resolution
-          git merge upstream/$DEFAULT_BRANCH --no-edit || true
-
-          # Commit the conflict state
-          git add -A
-          git commit -m "🔴 Merge conflict from upstream - manual resolution required" || true
-          git push origin $BRANCH_NAME
-
-          # Get the default branch of the current repository
-          CURRENT_DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@')
-
-          # Create PR
-          PR_URL=$(gh pr create \
-            --title "🔴 [Conflict] Sync from upstream" \
-            --body "⚠️ Merge conflicts detected. Please resolve manually and merge." \
-            --base $CURRENT_DEFAULT_BRANCH \
-            --head $BRANCH_NAME)
-
-          echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
 
       - name: Sync tags
         if: steps.sync.outputs.has_conflicts == 'false'
@@ -236,44 +208,4 @@ jobs:
               ]
             }
 
-  notify-slack-conflict:
-    needs: sync
-    if: needs.sync.outputs.has_conflicts == 'true'
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Check for Slack webhook
-        id: check_webhook
-        run: |
-          if [[ -n "${{ secrets.SLACK_WEBHOOK_URL }}" ]]; then
-            echo "has_webhook=true" >> $GITHUB_OUTPUT
-          else
-            echo "has_webhook=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Send Slack notification for conflict
-        if: steps.check_webhook.outputs.has_webhook == 'true'
-        uses: slackapi/slack-github-action@v2.0.0
-        with:
-          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
-          webhook-type: incoming-webhook
-          payload: |
-            {
-              "text": "⚠️ Mirror sync conflict detected",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "*⚠️ Mirror Sync Conflict*\nManual intervention required"
-                  }
-                },
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "*Repository:* `${{ github.repository }}`\n*PR:* <${{ needs.sync.outputs.pr_url }}|View Pull Request>"
-                  }
-                }
-              ]
-            }{% endraw %}
+{% endraw %}
