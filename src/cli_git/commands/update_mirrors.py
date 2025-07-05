@@ -7,7 +7,10 @@ import typer
 
 from cli_git.commands.modules.interactive import select_mirrors_interactive
 from cli_git.commands.modules.scan import scan_for_mirrors
-from cli_git.commands.modules.workflow_updater import update_workflow_file
+from cli_git.commands.modules.workflow_updater import (
+    create_mirrorkeep_if_missing,
+    update_workflow_file,
+)
 from cli_git.completion.completers import complete_repository
 from cli_git.core.workflow import generate_sync_workflow
 from cli_git.utils.config import ConfigManager
@@ -260,6 +263,17 @@ def _update_mirrors(mirrors: list, github_token: str, slack_webhook_url: str) ->
             if slack_webhook_url:
                 add_repo_secret(repo_name, "SLACK_WEBHOOK_URL", slack_webhook_url)
                 typer.echo("    ✓ Slack webhook added")
+
+            # Check and create .mirrorkeep if missing
+            typer.echo("  Checking .mirrorkeep file...")
+            try:
+                mirrorkeep_created = create_mirrorkeep_if_missing(repo_name)
+                if mirrorkeep_created:
+                    typer.echo("    ✓ Created .mirrorkeep file")
+                else:
+                    typer.echo("    ✓ .mirrorkeep file already exists")
+            except GitHubError as e:
+                typer.echo(f"    ⚠️  Could not create .mirrorkeep: {e}")
 
             # Update workflow file
             typer.echo("  Updating workflow file...")

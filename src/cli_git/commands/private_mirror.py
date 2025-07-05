@@ -60,6 +60,25 @@ def clean_github_directory(repo_path: Path) -> bool:
         return False
 
 
+def create_mirrorkeep_file(repo_path: Path) -> None:
+    """Create .mirrorkeep file with default content.
+
+    Args:
+        repo_path: Path to the repository
+    """
+    mirrorkeep_content = """# .mirrorkeep - Files to preserve during mirror sync
+# This file uses gitignore syntax
+
+# Essential files
+.github/workflows/mirror-sync.yml
+.mirrorkeep
+
+# Add your custom files/patterns below:
+"""
+    mirrorkeep_path = repo_path / ".mirrorkeep"
+    mirrorkeep_path.write_text(mirrorkeep_content)
+
+
 def private_mirror_operation(
     upstream_url: str,
     target_name: str,
@@ -98,10 +117,19 @@ def private_mirror_operation(
         typer.echo("  ✓ Removing original .github directory")
         github_cleaned = clean_github_directory(repo_path)
 
-        # Commit the changes if .github was removed
+        # Create .mirrorkeep file
+        typer.echo("  ✓ Creating .mirrorkeep file")
+        create_mirrorkeep_file(repo_path)
+
+        # Commit the changes
         if github_cleaned:
+            # Both .github removal and .mirrorkeep addition
             run_git_command("add -A")
-            run_git_command('commit -m "Remove original .github directory"')
+            run_git_command('commit -m "Remove original .github directory and add .mirrorkeep"')
+        else:
+            # Only .mirrorkeep addition
+            run_git_command("add .mirrorkeep")
+            run_git_command('commit -m "Add .mirrorkeep file"')
 
         # Create private repository
         typer.echo(f"  ✓ Creating private repository: {org or username}/{target_name}")
