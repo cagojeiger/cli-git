@@ -39,8 +39,7 @@ setup_test_env() {
     # Create upstream repository
     mkdir upstream
     cd upstream
-    git init --quiet
-    git config init.defaultBranch main
+    git init --quiet --initial-branch=main
     echo "# Upstream Project" > README.md
     echo "print('hello world')" > main.py
     mkdir -p .github/workflows
