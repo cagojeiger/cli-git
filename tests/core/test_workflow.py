@@ -45,7 +45,7 @@ class TestWorkflow:
 
         # Check sync step
         sync_step = steps[2]
-        assert sync_step["name"] == "Sync with rebase"
+        assert sync_step["name"] == "Sync with reset"
         assert "UPSTREAM_URL" in sync_step["env"]
         assert sync_step["env"]["UPSTREAM_URL"] == "${{ secrets.UPSTREAM_URL }}"
         assert "UPSTREAM_DEFAULT_BRANCH" in sync_step["env"]
@@ -77,24 +77,26 @@ class TestWorkflow:
         assert "git config user.email" in workflow_yaml
         assert "git remote add upstream $UPSTREAM_URL" in workflow_yaml
         assert "git fetch upstream" in workflow_yaml
-        assert "git rebase upstream/$DEFAULT_BRANCH" in workflow_yaml
-        assert "git push origin $CURRENT_BRANCH --force-with-lease" in workflow_yaml
+        assert "git reset --hard upstream/$DEFAULT_BRANCH" in workflow_yaml
+        assert "git push origin $CURRENT_BRANCH --force" in workflow_yaml
         assert "git push origin --tags" in workflow_yaml
         assert "GH_TOKEN" in workflow_yaml
 
-    def test_conflict_handling(self):
-        """Test that conflict handling logic is present."""
+    def test_no_conflict_with_reset(self):
+        """Test that reset approach doesn't have conflict handling."""
         workflow_yaml = generate_sync_workflow(
             upstream_url="https://github.com/owner/repo",
             schedule="0 0 * * *",
             upstream_default_branch="main",
         )
 
-        # Check for conflict handling
-        assert "has_conflicts=true" in workflow_yaml
-        assert "has_conflicts=false" in workflow_yaml
-        assert "gh pr create" in workflow_yaml
-        assert "notify-slack" in workflow_yaml
+        # Check that conflict handling is removed
+        assert "has_conflicts=true" not in workflow_yaml
+        assert "has_conflicts=false" in workflow_yaml  # Always false with reset
+        assert "gh pr create" not in workflow_yaml
+        assert "notify-slack-conflict" not in workflow_yaml
+        # But failure notification should still exist
+        assert "notify-slack-failure" in workflow_yaml
 
     def test_gh_token_configuration(self):
         """Test that GH_TOKEN is properly configured for tag syncing."""
@@ -121,3 +123,70 @@ class TestWorkflow:
         assert gh_token_env_found, "GH_TOKEN environment variable not found in tag sync"
         assert 'if [ -n "$GH_TOKEN" ]; then' in workflow_yaml
         assert "x-access-token:${GH_TOKEN}@github.com" in workflow_yaml
+
+    def test_sync_uses_reset_not_rebase(self):
+        """Test that sync uses reset --hard instead of rebase."""
+        workflow_yaml = generate_sync_workflow(
+            upstream_url="https://github.com/owner/repo",
+            schedule="0 0 * * *",
+            upstream_default_branch="main",
+        )
+
+        # Should use reset --hard
+        assert "git reset --hard upstream/$DEFAULT_BRANCH" in workflow_yaml
+        # Should NOT use rebase
+        assert "git rebase upstream/$DEFAULT_BRANCH" not in workflow_yaml
+
+    def test_backup_includes_custom_files_list(self):
+        """Test that backup saves list of custom user files."""
+        workflow_yaml = generate_sync_workflow(
+            upstream_url="https://github.com/owner/repo",
+            schedule="0 0 * * *",
+            upstream_default_branch="main",
+        )
+
+        # Should detect custom files
+        assert 'find .github -type f ! -name "mirror-sync.yml"' in workflow_yaml
+        # Should save list to file
+        assert "$BACKUP_DIR/custom_files.txt" in workflow_yaml
+
+    def test_restore_preserves_custom_files(self):
+        """Test that restore process preserves user's custom files."""
+        workflow_yaml = generate_sync_workflow(
+            upstream_url="https://github.com/owner/repo",
+            schedule="0 0 * * *",
+            upstream_default_branch="main",
+        )
+
+        # Should have custom file restore logic
+        assert "Restoring custom files..." in workflow_yaml
+        assert "while IFS= read -r file" in workflow_yaml
+        assert "Restored: $file" in workflow_yaml
+
+    def test_no_conflict_handling(self):
+        """Test that conflict handling is removed since reset doesn't create conflicts."""
+        workflow_yaml = generate_sync_workflow(
+            upstream_url="https://github.com/owner/repo",
+            schedule="0 0 * * *",
+            upstream_default_branch="main",
+        )
+
+        # Should NOT have conflict PR creation
+        assert "Create PR if conflicts" not in workflow_yaml
+        # Should NOT have slack notification for conflicts
+        assert "notify-slack-conflict" not in workflow_yaml
+        # Should NOT set has_conflicts=true
+        assert "has_conflicts=true" not in workflow_yaml
+
+    def test_force_push_after_reset(self):
+        """Test that force push is used after reset."""
+        workflow_yaml = generate_sync_workflow(
+            upstream_url="https://github.com/owner/repo",
+            schedule="0 0 * * *",
+            upstream_default_branch="main",
+        )
+
+        # Should use force push (not force-with-lease)
+        assert "git push origin $CURRENT_BRANCH --force" in workflow_yaml
+        # Should NOT use force-with-lease which can fail after reset
+        assert "--force-with-lease" not in workflow_yaml
