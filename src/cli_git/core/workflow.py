@@ -51,10 +51,15 @@ jobs:
           echo "Adding upstream remote..."
           git remote add upstream $UPSTREAM_URL || git remote set-url upstream $UPSTREAM_URL
 
-          # Configure sparse-checkout to exclude .github directory
-          echo "Configuring sparse-checkout to exclude .github directory..."
-          git sparse-checkout init --cone
-          git sparse-checkout set '/*' '!/.github'
+          # Configure merge driver to preserve .github directory
+          git config merge.ours.driver true
+
+          # Ensure .gitattributes exists with .github exclusion
+          if ! grep -q "^.github/\\*\\* merge=ours" .gitattributes 2>/dev/null; then
+            echo ".github/** merge=ours" >> .gitattributes
+            git add .gitattributes
+            git commit -m "Configure .github directory preservation" || true
+          fi
 
           echo "Fetching from upstream..."
           git fetch upstream
@@ -79,7 +84,6 @@ jobs:
           echo "Attempting rebase..."
           if git rebase upstream/$DEFAULT_BRANCH; then
             echo "✅ Rebase successful"
-
             git push origin $CURRENT_BRANCH --force-with-lease
             echo "has_conflicts=false" >> $GITHUB_OUTPUT
           else
@@ -94,60 +98,29 @@ jobs:
         env:
           GH_TOKEN: ${{{{ secrets.GH_TOKEN }}}}
         run: |
-          # Disable sparse-checkout for conflict resolution
-          git sparse-checkout disable
-
           # Create branch for conflict resolution with unique name
           BRANCH_NAME="sync/upstream-$(date +%Y%m%d-%H%M%S)-${{{{ github.run_id }}}}"
           git checkout -b $BRANCH_NAME
 
-          # Add upstream as remote and fetch
-          git fetch upstream
-
-          # Get upstream default branch - prefer dynamic detection
+          # Get upstream default branch
           DETECTED_BRANCH=$(git ls-remote --symref upstream HEAD | awk '/^ref:/ {{sub(/refs\\/heads\\//, "", $2); print $2}}')
+          DEFAULT_BRANCH="${{DETECTED_BRANCH:-${{{{ secrets.UPSTREAM_DEFAULT_BRANCH }}}}}}"
 
-          if [ -n "$DETECTED_BRANCH" ]; then
-            DEFAULT_BRANCH="$DETECTED_BRANCH"
-          elif [ -n "${{{{ secrets.UPSTREAM_DEFAULT_BRANCH }}}}" ]; then
-            DEFAULT_BRANCH="${{{{ secrets.UPSTREAM_DEFAULT_BRANCH }}}}"
-          else
-            echo "ERROR: Could not determine upstream default branch"
-            exit 1
-          fi
-
-          # Save current .github directory
-          BACKUP_DIR=$(mktemp -d)
-          if [ -d .github ]; then
-            cp -r .github "$BACKUP_DIR/"
-          fi
-
-          # Try merge with strategy to prefer our .github files
-          git merge upstream/$DEFAULT_BRANCH --no-edit --strategy-option=ours || true
-
-          # Restore our .github directory
-          if [ -d "$BACKUP_DIR/.github" ]; then
-            rm -rf .github
-            cp -r "$BACKUP_DIR/.github" .
-            git add .github
-          fi
-
-          # Cleanup backup
-          rm -rf "$BACKUP_DIR"
+          # Try merge instead of rebase for conflict resolution
+          git merge upstream/$DEFAULT_BRANCH --no-edit || true
 
           # Commit the conflict state
           git add -A
-          git commit -m "🔴 Merge conflict from upstream - manual resolution required (.github excluded)" || true
+          git commit -m "🔴 Merge conflict from upstream - manual resolution required" || true
           git push origin $BRANCH_NAME
 
           # Get the default branch of the current repository
           CURRENT_DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@')
 
           # Create PR
-          PR_BODY="⚠️ Merge conflicts detected. Please resolve manually and merge."$'\\n\\n'"Note: .github directory has been excluded from sync to prevent workflow conflicts."
           PR_URL=$(gh pr create \\
             --title "🔴 [Conflict] Sync from upstream" \\
-            --body "$PR_BODY" \\
+            --body "⚠️ Merge conflicts detected. Please resolve manually and merge." \\
             --base $CURRENT_DEFAULT_BRANCH \\
             --head $BRANCH_NAME)
 
