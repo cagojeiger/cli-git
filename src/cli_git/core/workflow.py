@@ -115,7 +115,7 @@ jobs:
           git push origin $BRANCH_NAME
 
           # Get the default branch of the current repository
-          CURRENT_DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@')
+          CURRENT_DEFAULT_BRANCH=$(gh api repos/${{{{ github.repository }}}} --jq '.default_branch')
 
           # Create PR
           PR_URL=$(gh pr create \\
