@@ -31,17 +31,34 @@ jobs:
           fetch-depth: 0
           token: ${{{{ secrets.GH_TOKEN }}}}
 
-      - name: Backup mirror configurations
+      - name: Identify and backup mirror-only files
         run: |
-          # 미러 전용 파일 백업
+          # 백업 디렉토리 생성
           mkdir -p /tmp/mirror-backup
 
-          # 현재 미러 워크플로우 백업
-          if [ -f .github/workflows/mirror-sync.yml ]; then
-            cp .github/workflows/mirror-sync.yml /tmp/mirror-backup/
-          fi
+          # upstream 가져오기 (비교를 위해)
+          git remote add upstream ${{{{ secrets.UPSTREAM_URL }}}} || true
+          git fetch upstream --depth=1
 
-          # 제거할 파일 목록 생성
+          # upstream에 없고 미러에만 있는 파일 찾기
+          echo "Finding mirror-only files..."
+          comm -23 <(git ls-files | sort) \
+                   <(git ls-tree -r upstream/HEAD --name-only | sort) \
+                   > /tmp/mirror-backup/mirror-only-files.txt
+
+          # 찾은 파일 개수 출력
+          echo "Found $(wc -l < /tmp/mirror-backup/mirror-only-files.txt) mirror-only files"
+
+          # 미러 전용 파일들 백업
+          while IFS= read -r file; do
+            if [ -f "$file" ]; then
+              # 디렉토리 구조 유지하면서 백업
+              mkdir -p "/tmp/mirror-backup/files/$(dirname "$file")"
+              cp "$file" "/tmp/mirror-backup/files/$file"
+            fi
+          done < /tmp/mirror-backup/mirror-only-files.txt
+
+          # 제거할 upstream 파일 목록 (미러에서는 필요없는 것들)
           cat > /tmp/mirror-backup/remove-list.txt << EOF
           .github/workflows/operator.yml
           .github/workflows/registry-push.yml
@@ -70,21 +87,31 @@ jobs:
 
       - name: Apply mirror customizations
         run: |
-          # 미러 워크플로우 복원
-          if [ -f /tmp/mirror-backup/mirror-sync.yml ]; then
-            mkdir -p .github/workflows
-            cp /tmp/mirror-backup/mirror-sync.yml .github/workflows/
+          # 미러 전용 파일들 복원
+          if [ -s /tmp/mirror-backup/mirror-only-files.txt ]; then
+            echo "Restoring mirror-only files..."
+            while IFS= read -r file; do
+              if [ -f "/tmp/mirror-backup/files/$file" ]; then
+                # 디렉토리가 없으면 생성
+                mkdir -p "$(dirname "$file")"
+                cp "/tmp/mirror-backup/files/$file" "$file"
+              fi
+            done < /tmp/mirror-backup/mirror-only-files.txt
           fi
 
-          # 불필요한 파일 제거
+          # 불필요한 upstream 파일 제거
+          echo "Removing unnecessary upstream files..."
           while IFS= read -r file; do
             rm -f "$file"
           done < /tmp/mirror-backup/remove-list.txt
 
-          # 변경사항 커밋
+          # 변경사항 확인 및 커밋
           git add -A
           if ! git diff --cached --quiet; then
-            git commit -m "♻️ Sync from upstream + mirror customizations"
+            MIRROR_FILES=$(wc -l < /tmp/mirror-backup/mirror-only-files.txt)
+            git commit -m "♻️ Sync from upstream + preserve $MIRROR_FILES mirror-only files"
+          else
+            echo "No changes to commit"
           fi
 
       - name: Push changes
