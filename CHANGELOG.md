@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v2.2.0 (2025-07-06)
+
+### Features
+
+- Apply random schedule to update-mirrors command
+  ([#17](https://github.com/cagojeiger/cli-git/pull/17),
+  [`21b073c`](https://github.com/cagojeiger/cli-git/commit/21b073c3d179c8e25b211fe4ef88568623ad9eab))
+
+
 ## v2.1.1 (2025-07-06)
 
 ### Bug Fixes
