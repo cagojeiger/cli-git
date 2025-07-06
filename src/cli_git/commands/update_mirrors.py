@@ -22,6 +22,7 @@ from cli_git.utils.gh import (
     get_upstream_default_branch,
 )
 from cli_git.utils.git import extract_repo_info
+from cli_git.utils.schedule import generate_random_biweekly_schedule
 
 
 def update_mirrors_command(
@@ -278,9 +279,12 @@ def _update_mirrors(mirrors: list, github_token: str, slack_webhook_url: str) ->
             # Update workflow file
             typer.echo("  Updating workflow file...")
 
+            # Generate random schedule for better distribution
+            random_schedule = generate_random_biweekly_schedule()
+
             workflow_content = generate_sync_workflow(
                 upstream_url or "https://github.com/PLACEHOLDER/PLACEHOLDER",
-                "0 0 * * *",  # Default schedule
+                random_schedule,  # Use random schedule instead of fixed
                 upstream_branch if upstream_url else "main",
             )
 
