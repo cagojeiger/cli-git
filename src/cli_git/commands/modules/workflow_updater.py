@@ -3,6 +3,7 @@
 import subprocess
 from typing import Optional
 
+from cli_git.core.mirrorkeep import create_default_mirrorkeep
 from cli_git.utils.gh import GitHubError
 
 
@@ -60,16 +61,25 @@ def update_workflow_file(repo: str, content: str) -> bool:
             with open(workflow_path, "w") as f:
                 f.write(content)
 
-            # Commit and push
-            os.chdir(tmpdir)
+            # Save current directory before changing
+            # IMPORTANT: Always restore the original directory to avoid side effects
+            original_cwd = os.getcwd()
 
-            subprocess.run(["git", "add", ".github/workflows/mirror-sync.yml"], check=True)
-            subprocess.run(
-                ["git", "commit", "-m", "Update mirror sync workflow to latest version"], check=True
-            )
-            subprocess.run(["git", "push"], check=True)
+            try:
+                # Commit and push
+                os.chdir(tmpdir)
 
-            return True
+                subprocess.run(["git", "add", ".github/workflows/mirror-sync.yml"], check=True)
+                subprocess.run(
+                    ["git", "commit", "-m", "Update mirror sync workflow to latest version"],
+                    check=True,
+                )
+                subprocess.run(["git", "push"], check=True)
+
+                return True
+            finally:
+                # Always restore the original directory
+                os.chdir(original_cwd)
 
     except subprocess.CalledProcessError as e:
         raise GitHubError(f"Failed to update workflow: {e}")
@@ -129,3 +139,73 @@ def get_repo_secret_value(repo: str, secret_name: str) -> Optional[str]:
         pass
 
     return None
+
+
+def create_mirrorkeep_if_missing(repo: str) -> bool:
+    """Create .mirrorkeep file in repository if it doesn't exist.
+
+    Args:
+        repo: Repository name (owner/repo)
+
+    Returns:
+        True if file was created, False if already exists
+
+    Raises:
+        GitHubError: If operation fails
+    """
+    try:
+        # Check if .mirrorkeep already exists
+        check_result = subprocess.run(
+            ["gh", "api", f"repos/{repo}/contents/.mirrorkeep"],
+            capture_output=True,
+            text=True,
+        )
+
+        if check_result.returncode == 0:
+            # File already exists
+            return False
+
+        # File doesn't exist, create it
+        import os
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Clone the repo
+            clone_result = subprocess.run(
+                ["gh", "repo", "clone", repo, tmpdir], capture_output=True, text=True
+            )
+
+            if clone_result.returncode != 0:
+                raise GitHubError(f"Failed to clone repository: {clone_result.stderr}")
+
+            # Create .mirrorkeep file
+            mirrorkeep_path = os.path.join(tmpdir, ".mirrorkeep")
+            mirrorkeep_content = create_default_mirrorkeep()
+
+            with open(mirrorkeep_path, "w") as f:
+                f.write(mirrorkeep_content)
+
+            # Save current directory before changing
+            # IMPORTANT: Always restore the original directory to avoid side effects
+            original_cwd = os.getcwd()
+
+            try:
+                # Commit and push
+                os.chdir(tmpdir)
+
+                subprocess.run(["git", "add", ".mirrorkeep"], check=True)
+                subprocess.run(
+                    ["git", "commit", "-m", "Add .mirrorkeep file for preserving custom files"],
+                    check=True,
+                )
+                subprocess.run(["git", "push"], check=True)
+
+                return True
+            finally:
+                # Always restore the original directory
+                os.chdir(original_cwd)
+
+    except subprocess.CalledProcessError as e:
+        raise GitHubError(f"Failed to create .mirrorkeep: {e}")
+    except Exception as e:
+        raise GitHubError(f"Unexpected error creating .mirrorkeep: {e}")

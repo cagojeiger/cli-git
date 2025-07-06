@@ -22,6 +22,7 @@ from cli_git.utils.gh import (
     get_upstream_default_branch,
 )
 from cli_git.utils.git import extract_repo_info, get_default_branch, run_git_command
+from cli_git.utils.schedule import describe_schedule, generate_random_biweekly_schedule
 from cli_git.utils.validators import (
     ValidationError,
     validate_cron_schedule,
@@ -58,6 +59,25 @@ def clean_github_directory(repo_path: Path) -> bool:
 
         print(f"Warning: Failed to remove .github directory: {e}", file=sys.stderr)
         return False
+
+
+def create_mirrorkeep_file(repo_path: Path) -> None:
+    """Create .mirrorkeep file with default content.
+
+    Args:
+        repo_path: Path to the repository
+    """
+    mirrorkeep_content = """# .mirrorkeep - Files to preserve during mirror sync
+# This file uses gitignore syntax
+
+# Essential files
+.github/workflows/mirror-sync.yml
+.mirrorkeep
+
+# Add your custom files/patterns below:
+"""
+    mirrorkeep_path = repo_path / ".mirrorkeep"
+    mirrorkeep_path.write_text(mirrorkeep_content)
 
 
 def private_mirror_operation(
@@ -98,10 +118,19 @@ def private_mirror_operation(
         typer.echo("  ✓ Removing original .github directory")
         github_cleaned = clean_github_directory(repo_path)
 
-        # Commit the changes if .github was removed
+        # Create .mirrorkeep file
+        typer.echo("  ✓ Creating .mirrorkeep file")
+        create_mirrorkeep_file(repo_path)
+
+        # Commit the changes
         if github_cleaned:
+            # Both .github removal and .mirrorkeep addition
             run_git_command("add -A")
-            run_git_command('commit -m "Remove original .github directory"')
+            run_git_command('commit -m "Remove original .github directory and add .mirrorkeep"')
+        else:
+            # Only .mirrorkeep addition
+            run_git_command("add .mirrorkeep")
+            run_git_command('commit -m "Add .mirrorkeep file"')
 
         # Create private repository
         typer.echo(f"  ✓ Creating private repository: {org or username}/{target_name}")
@@ -191,11 +220,11 @@ def private_mirror_command(
         typer.Option("--prefix", "-p", help="Mirror name prefix", autocompletion=complete_prefix),
     ] = None,
     schedule: Annotated[
-        str,
+        Optional[str],
         typer.Option(
             "--schedule", "-s", help="Sync schedule (cron format)", autocompletion=complete_schedule
         ),
-    ] = "0 0 * * *",
+    ] = None,
     no_sync: Annotated[
         bool, typer.Option("--no-sync", help="Disable automatic synchronization")
     ] = False,
@@ -225,8 +254,13 @@ def private_mirror_command(
         if org:
             validate_organization(org)
 
-        # Validate schedule
-        validate_cron_schedule(schedule)
+        # Generate random schedule if not provided
+        if schedule is None:
+            schedule = generate_random_biweekly_schedule()
+            is_random_schedule = True
+        else:
+            validate_cron_schedule(schedule)
+            is_random_schedule = False
 
         # Validate prefix if provided
         if prefix is not None:
@@ -308,7 +342,12 @@ def private_mirror_command(
         if no_sync:
             typer.echo("   - Manual sync is required (automatic sync disabled)")
         else:
-            typer.echo("   - The mirror will sync daily at 00:00 UTC")
+            if is_random_schedule:
+                typer.echo(
+                    f"   - 🎲 Random sync schedule: {schedule} ({describe_schedule(schedule)})"
+                )
+            else:
+                typer.echo(f"   - Sync schedule: {schedule} ({describe_schedule(schedule)})")
             typer.echo("   - To sync manually: Go to Actions → Mirror Sync → Run workflow")
 
         typer.echo(f"   - Clone your mirror: git clone {mirror_url}")
