@@ -151,3 +151,41 @@ non-existent.txt
             # Verify all expected files were found
             for expected in expected_files:
                 assert any(expected in f for f in found_files), f"Expected {expected} not found"
+
+    def test_recursive_directory_backup(self):
+        """Test that directory patterns backup files recursively."""
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+
+            # Create deeply nested structure
+            (root / ".docs").mkdir()
+            (root / ".docs" / "level1").mkdir()
+            (root / ".docs" / "level1" / "level2").mkdir()
+            (root / ".docs" / "level1" / "level2" / "level3").mkdir()
+
+            # Create files at each level
+            (root / ".docs" / "root.md").write_text("root")
+            (root / ".docs" / "level1" / "file1.md").write_text("level1")
+            (root / ".docs" / "level1" / "level2" / "file2.md").write_text("level2")
+            (root / ".docs" / "level1" / "level2" / "level3" / "file3.md").write_text("level3")
+
+            # Test shell script that should backup all files recursively
+            script = """
+            pattern=".docs/"
+            if [ "${pattern: -1}" = "/" ]; then
+                dir_pattern="${pattern%/}"
+                find . -path "./$dir_pattern" -type d 2>/dev/null | while read -r dir; do
+                    find "$dir" -type f 2>/dev/null
+                done
+            fi
+            """
+
+            result = subprocess.run(
+                ["bash", "-c", script], cwd=str(root), capture_output=True, text=True
+            )
+
+            # Should find all files at all levels
+            assert ".docs/root.md" in result.stdout
+            assert ".docs/level1/file1.md" in result.stdout
+            assert ".docs/level1/level2/file2.md" in result.stdout
+            assert ".docs/level1/level2/level3/file3.md" in result.stdout
