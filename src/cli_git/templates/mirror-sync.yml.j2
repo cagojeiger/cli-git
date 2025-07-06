@@ -83,13 +83,28 @@ jobs:
           if [ -f .mirrorkeep ]; then
             # Parse patterns and backup files
             grep -v '^#' .mirrorkeep | grep -v '^$' | grep -v '^!' | while read -r pattern; do
-              # Find and backup files matching the pattern
-              find . -path "./$pattern" -o -path "./${pattern%/}/*" -type f 2>/dev/null | while read -r file; do
-                rel_path="${file#./}"
-                mkdir -p "$BACKUP_DIR/$(dirname "$rel_path")"
-                cp "$file" "$BACKUP_DIR/$rel_path"
-                echo "Backed up: $rel_path"
-              done
+              # Handle directory patterns (ending with /)
+              if [ "${pattern: -1}" = "/" ]; then
+                # Remove trailing slash for find command
+                dir_pattern="${pattern%/}"
+                # Find the directory and all files within it recursively
+                find . -path "./$dir_pattern" -type d 2>/dev/null | while read -r dir; do
+                  find "$dir" -type f 2>/dev/null | while read -r file; do
+                    rel_path="${file#./}"
+                    mkdir -p "$BACKUP_DIR/$(dirname "$rel_path")"
+                    cp "$file" "$BACKUP_DIR/$rel_path"
+                    echo "Backed up: $rel_path"
+                  done
+                done
+              else
+                # Handle file patterns
+                find . -path "./$pattern" -type f 2>/dev/null | while read -r file; do
+                  rel_path="${file#./}"
+                  mkdir -p "$BACKUP_DIR/$(dirname "$rel_path")"
+                  cp "$file" "$BACKUP_DIR/$rel_path"
+                  echo "Backed up: $rel_path"
+                done
+              fi
             done
           fi
 
