@@ -61,16 +61,25 @@ def update_workflow_file(repo: str, content: str) -> bool:
             with open(workflow_path, "w") as f:
                 f.write(content)
 
-            # Commit and push
-            os.chdir(tmpdir)
+            # Save current directory before changing
+            # IMPORTANT: Always restore the original directory to avoid side effects
+            original_cwd = os.getcwd()
 
-            subprocess.run(["git", "add", ".github/workflows/mirror-sync.yml"], check=True)
-            subprocess.run(
-                ["git", "commit", "-m", "Update mirror sync workflow to latest version"], check=True
-            )
-            subprocess.run(["git", "push"], check=True)
+            try:
+                # Commit and push
+                os.chdir(tmpdir)
 
-            return True
+                subprocess.run(["git", "add", ".github/workflows/mirror-sync.yml"], check=True)
+                subprocess.run(
+                    ["git", "commit", "-m", "Update mirror sync workflow to latest version"],
+                    check=True,
+                )
+                subprocess.run(["git", "push"], check=True)
+
+                return True
+            finally:
+                # Always restore the original directory
+                os.chdir(original_cwd)
 
     except subprocess.CalledProcessError as e:
         raise GitHubError(f"Failed to update workflow: {e}")
@@ -176,17 +185,25 @@ def create_mirrorkeep_if_missing(repo: str) -> bool:
             with open(mirrorkeep_path, "w") as f:
                 f.write(mirrorkeep_content)
 
-            # Commit and push
-            os.chdir(tmpdir)
+            # Save current directory before changing
+            # IMPORTANT: Always restore the original directory to avoid side effects
+            original_cwd = os.getcwd()
 
-            subprocess.run(["git", "add", ".mirrorkeep"], check=True)
-            subprocess.run(
-                ["git", "commit", "-m", "Add .mirrorkeep file for preserving custom files"],
-                check=True,
-            )
-            subprocess.run(["git", "push"], check=True)
+            try:
+                # Commit and push
+                os.chdir(tmpdir)
 
-            return True
+                subprocess.run(["git", "add", ".mirrorkeep"], check=True)
+                subprocess.run(
+                    ["git", "commit", "-m", "Add .mirrorkeep file for preserving custom files"],
+                    check=True,
+                )
+                subprocess.run(["git", "push"], check=True)
+
+                return True
+            finally:
+                # Always restore the original directory
+                os.chdir(original_cwd)
 
     except subprocess.CalledProcessError as e:
         raise GitHubError(f"Failed to create .mirrorkeep: {e}")
