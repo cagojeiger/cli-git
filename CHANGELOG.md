@@ -2,6 +2,61 @@
 
 <!-- version list -->
 
+## v2.1.0 (2025-07-06)
+
+### Bug Fixes
+
+- Replace rebase with reset to avoid modify/delete conflicts
+  ([#15](https://github.com/cagojeiger/cli-git/pull/15),
+  [`abbe82b`](https://github.com/cagojeiger/cli-git/commit/abbe82b8abc11fbd8959beed683589b88ddf4d4b))
+
+- Restore original directory after os.chdir in workflow_updater
+  ([#15](https://github.com/cagojeiger/cli-git/pull/15),
+  [`abbe82b`](https://github.com/cagojeiger/cli-git/commit/abbe82b8abc11fbd8959beed683589b88ddf4d4b))
+
+### Features
+
+- Add edge case handling and documentation for mirrorkeep
+  ([#15](https://github.com/cagojeiger/cli-git/pull/15),
+  [`abbe82b`](https://github.com/cagojeiger/cli-git/commit/abbe82b8abc11fbd8959beed683589b88ddf4d4b))
+
+- Add mirrorkeep parser module with pattern matching
+  ([#15](https://github.com/cagojeiger/cli-git/pull/15),
+  [`abbe82b`](https://github.com/cagojeiger/cli-git/commit/abbe82b8abc11fbd8959beed683589b88ddf4d4b))
+
+- Add random bi-weekly schedule for mirror sync
+  ([#15](https://github.com/cagojeiger/cli-git/pull/15),
+  [`abbe82b`](https://github.com/cagojeiger/cli-git/commit/abbe82b8abc11fbd8959beed683589b88ddf4d4b))
+
+- Implement .mirrorkeep file preservation system
+  ([#15](https://github.com/cagojeiger/cli-git/pull/15),
+  [`abbe82b`](https://github.com/cagojeiger/cli-git/commit/abbe82b8abc11fbd8959beed683589b88ddf4d4b))
+
+- Mirrorkeep 파일 시스템 구현 및 랜덤 스케줄 기능 추가 ([#15](https://github.com/cagojeiger/cli-git/pull/15),
+  [`abbe82b`](https://github.com/cagojeiger/cli-git/commit/abbe82b8abc11fbd8959beed683589b88ddf4d4b))
+
+- Update workflow to use .mirrorkeep for file preservation
+  ([#15](https://github.com/cagojeiger/cli-git/pull/15),
+  [`abbe82b`](https://github.com/cagojeiger/cli-git/commit/abbe82b8abc11fbd8959beed683589b88ddf4d4b))
+
+### Refactoring
+
+- Apply Occam's Razor to complete_repository function
+  ([#9](https://github.com/cagojeiger/cli-git/pull/9),
+  [`bd07b15`](https://github.com/cagojeiger/cli-git/commit/bd07b1543b9ea87208a2ca72301cd6653ce670be))
+
+- Extract workflow template to external file ([#13](https://github.com/cagojeiger/cli-git/pull/13),
+  [`67f0fff`](https://github.com/cagojeiger/cli-git/commit/67f0fff4888a8c64e3b18dc68f0e490568dc0536))
+
+- Simplify init_command by extracting helper functions
+  ([#12](https://github.com/cagojeiger/cli-git/pull/12),
+  [`63f34ab`](https://github.com/cagojeiger/cli-git/commit/63f34ab5008aa189815f7286ae4605ca0de0a0e7))
+
+- Simplify workflow by applying Occam's razor principle
+  ([#15](https://github.com/cagojeiger/cli-git/pull/15),
+  [`abbe82b`](https://github.com/cagojeiger/cli-git/commit/abbe82b8abc11fbd8959beed683589b88ddf4d4b))
+
+
 ## v2.0.0 (2025-07-02)
 
 ### Bug Fixes
