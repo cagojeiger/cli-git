@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v2.1.1 (2025-07-06)
+
+### Bug Fixes
+
+- Support recursive directory backup in .mirrorkeep
+  ([#16](https://github.com/cagojeiger/cli-git/pull/16),
+  [`3085694`](https://github.com/cagojeiger/cli-git/commit/3085694016f4dfe92f9e81554723b049182ca9b5))
+
+
 ## v2.1.0 (2025-07-06)
 
 ### Bug Fixes
