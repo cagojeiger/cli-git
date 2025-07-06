@@ -153,10 +153,18 @@ def create_default_mirrorkeep() -> str:
 # - Lines starting with ! are exclusions
 # - Patterns ending with / match directories
 #
+# HOW IT WORKS:
+# 1. Before syncing with upstream, files matching these patterns are backed up
+# 2. The repository is reset to match upstream (git reset --hard)
+# 3. Backed up files are restored, preserving your local modifications
+# 4. If a file doesn't exist, it's silently skipped (no error)
+# 5. Modified files always take precedence over upstream versions
+#
 # Examples:
-#   *.md              # All markdown files
+#   *.md              # All markdown files in root directory
 #   .docs/**          # Everything under .docs/
-#   !README.md        # Exclude README.md
+#   !README.md        # Exclude README.md (upstream version will be used)
+#   config.json       # Specific file (your version preserved)
 
 # Essential files for mirror operation
 .github/workflows/mirror-sync.yml

@@ -81,12 +81,19 @@ jobs:
           # Backup files based on .mirrorkeep patterns
           echo "Backing up files from .mirrorkeep patterns..."
           if [ -f .mirrorkeep ]; then
+            # Track patterns that match files
+            MATCHED_PATTERNS=""
+            UNMATCHED_PATTERNS=""
+
             while IFS= read -r pattern; do
               # Skip comments and empty lines
               [[ -z "$pattern" || "$pattern" =~ ^[[:space:]]*# ]] && continue
 
               # Skip exclusion patterns (we'll handle them during matching)
               [[ "$pattern" == !* ]] && continue
+
+              # Count files before backing up
+              FILE_COUNT=0
 
               # Find files matching the pattern
               if [[ "$pattern" == */ ]]; then
@@ -101,8 +108,32 @@ jobs:
                 mkdir -p "$BACKUP_DIR/$(dirname "$rel_path")"
                 cp "$file" "$BACKUP_DIR/$rel_path"
                 echo "Backed up: $rel_path"
+                ((FILE_COUNT++))
               done
+
+              # Check if pattern matched any files
+              if [[ "$pattern" == */ ]]; then
+                FOUND_FILES=$(find . -path "./$pattern*" -type f 2>/dev/null | wc -l)
+              else
+                FOUND_FILES=$(find . -path "./$pattern" -type f 2>/dev/null | wc -l)
+              fi
+
+              if [ "$FOUND_FILES" -eq 0 ]; then
+                UNMATCHED_PATTERNS="$UNMATCHED_PATTERNS\n  - $pattern"
+              else
+                MATCHED_PATTERNS="$MATCHED_PATTERNS\n  - $pattern ($FOUND_FILES files)"
+              fi
             done < .mirrorkeep
+
+            # Report pattern matching results
+            if [ -n "$MATCHED_PATTERNS" ]; then
+              echo "✅ Patterns that matched files:$MATCHED_PATTERNS"
+            fi
+
+            if [ -n "$UNMATCHED_PATTERNS" ]; then
+              echo "⚠️  WARNING: Patterns that matched no files:$UNMATCHED_PATTERNS"
+              echo "   Consider removing these patterns from .mirrorkeep"
+            fi
           fi
 
           echo "Syncing with upstream using reset..."
