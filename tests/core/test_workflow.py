@@ -147,9 +147,10 @@ class TestWorkflow:
 
         # Should check for .mirrorkeep file
         assert "if [ -f .mirrorkeep ]; then" in workflow_yaml
-        # Should read patterns from .mirrorkeep
-        assert "while IFS= read -r pattern" in workflow_yaml
-        assert "done < .mirrorkeep" in workflow_yaml
+        # Should parse patterns from .mirrorkeep
+        assert "grep -v '^#' .mirrorkeep" in workflow_yaml
+        # Should backup files
+        assert "Backed up:" in workflow_yaml
 
     def test_creates_default_mirrorkeep(self):
         """Test that workflow creates default .mirrorkeep if missing."""
