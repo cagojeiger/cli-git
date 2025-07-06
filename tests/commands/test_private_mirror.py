@@ -28,8 +28,10 @@ class TestPrivateMirrorCommand:
     @patch("cli_git.commands.private_mirror.check_gh_auth")
     @patch("cli_git.commands.private_mirror.get_current_username")
     @patch("cli_git.commands.private_mirror.private_mirror_operation")
+    @patch("cli_git.commands.private_mirror.generate_random_biweekly_schedule")
     def test_private_mirror_success(
         self,
+        mock_generate_schedule,
         mock_mirror_operation,
         mock_get_username,
         mock_check_auth,
@@ -41,6 +43,7 @@ class TestPrivateMirrorCommand:
         mock_check_auth.return_value = True
         mock_get_username.return_value = "testuser"
         mock_mirror_operation.return_value = "https://github.com/testuser/repo-mirror"
+        mock_generate_schedule.return_value = "30 14 7,21 * *"  # Mock random schedule
 
         # Mock ConfigManager
         mock_manager = MagicMock()
@@ -50,21 +53,25 @@ class TestPrivateMirrorCommand:
             "preferences": {"default_schedule": "0 0 * * *", "default_prefix": "mirror-"},
         }
 
-        # Run command
+        # Run command without explicit schedule (should use random)
         result = runner.invoke(app, ["private-mirror", "https://github.com/owner/repo"])
 
         # Verify success
         assert result.exit_code == 0
         assert "✅ Success! Your private mirror is ready:" in result.stdout
         assert "https://github.com/testuser/repo-mirror" in result.stdout
+        assert "🎲 Random sync schedule:" in result.stdout  # Should show random schedule message
 
-        # Verify mirror operation was called correctly
+        # Verify random schedule was generated
+        mock_generate_schedule.assert_called_once()
+
+        # Verify mirror operation was called correctly with random schedule
         mock_mirror_operation.assert_called_once_with(
             upstream_url="https://github.com/owner/repo",
             target_name="mirror-repo",  # prefix applied
             username="testuser",
             org=None,
-            schedule="0 0 * * *",
+            schedule="30 14 7,21 * *",  # Random schedule
             no_sync=False,
             slack_webhook_url="",
             github_token="",
@@ -134,33 +141,48 @@ class TestPrivateMirrorCommand:
         }
         mock_mirror_operation.return_value = "https://github.com/testuser/my-custom-mirror"
 
-        runner.invoke(
-            app, ["private-mirror", "https://github.com/owner/repo", "--repo", "my-custom-mirror"]
-        )
+        # Mock the schedule generation (even though we provide explicit schedule)
+        with patch(
+            "cli_git.commands.private_mirror.generate_random_biweekly_schedule"
+        ) as mock_schedule:
+            mock_schedule.return_value = "30 14 7,21 * *"
 
-        # Verify custom name was used
-        mock_mirror_operation.assert_called_once_with(
-            upstream_url="https://github.com/owner/repo",
-            target_name="my-custom-mirror",
-            username="testuser",
-            org=None,
-            schedule="0 0 * * *",
-            no_sync=False,
-            slack_webhook_url="",
-            github_token="",
-        )
+            runner.invoke(
+                app,
+                ["private-mirror", "https://github.com/owner/repo", "--repo", "my-custom-mirror"],
+            )
+
+            # Verify custom name was used and random schedule was generated
+            mock_mirror_operation.assert_called_once_with(
+                upstream_url="https://github.com/owner/repo",
+                target_name="my-custom-mirror",
+                username="testuser",
+                org=None,
+                schedule="30 14 7,21 * *",  # Random schedule since not explicitly provided
+                no_sync=False,
+                slack_webhook_url="",
+                github_token="",
+            )
 
     @patch("cli_git.commands.private_mirror.check_gh_auth")
     @patch("cli_git.commands.private_mirror.get_current_username")
     @patch("cli_git.commands.private_mirror.ConfigManager")
     @patch("cli_git.commands.private_mirror.private_mirror_operation")
+    @patch("cli_git.commands.private_mirror.generate_random_biweekly_schedule")
     def test_private_mirror_with_organization(
-        self, mock_mirror_operation, mock_config_manager, mock_get_username, mock_check_auth, runner
+        self,
+        mock_generate_schedule,
+        mock_mirror_operation,
+        mock_config_manager,
+        mock_get_username,
+        mock_check_auth,
+        runner,
     ):
         """Test private mirror with organization."""
         # Setup mocks
         mock_check_auth.return_value = True
         mock_get_username.return_value = "testuser"
+        mock_generate_schedule.return_value = "15 10 5,19 * *"  # Mock random schedule
         mock_manager = MagicMock()
         mock_config_manager.return_value = mock_manager
         mock_manager.get_config.return_value = {
@@ -171,13 +193,13 @@ class TestPrivateMirrorCommand:
 
         runner.invoke(app, ["private-mirror", "https://github.com/owner/repo"])
 
-        # Verify org from config was used
+        # Verify org from config was used with random schedule
         mock_mirror_operation.assert_called_once_with(
             upstream_url="https://github.com/owner/repo",
             target_name="mirror-repo",  # prefix applied
             username="testuser",
             org="myorg",
-            schedule="0 0 * * *",
+            schedule="15 10 5,19 * *",  # Random schedule
             no_sync=False,
             slack_webhook_url="",
             github_token="",

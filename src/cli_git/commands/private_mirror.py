@@ -22,6 +22,7 @@ from cli_git.utils.gh import (
     get_upstream_default_branch,
 )
 from cli_git.utils.git import extract_repo_info, get_default_branch, run_git_command
+from cli_git.utils.schedule import describe_schedule, generate_random_biweekly_schedule
 from cli_git.utils.validators import (
     ValidationError,
     validate_cron_schedule,
@@ -219,11 +220,11 @@ def private_mirror_command(
         typer.Option("--prefix", "-p", help="Mirror name prefix", autocompletion=complete_prefix),
     ] = None,
     schedule: Annotated[
-        str,
+        Optional[str],
         typer.Option(
             "--schedule", "-s", help="Sync schedule (cron format)", autocompletion=complete_schedule
         ),
-    ] = "0 0 * * *",
+    ] = None,
     no_sync: Annotated[
         bool, typer.Option("--no-sync", help="Disable automatic synchronization")
     ] = False,
@@ -253,8 +254,13 @@ def private_mirror_command(
         if org:
             validate_organization(org)
 
-        # Validate schedule
-        validate_cron_schedule(schedule)
+        # Generate random schedule if not provided
+        if schedule is None:
+            schedule = generate_random_biweekly_schedule()
+            is_random_schedule = True
+        else:
+            validate_cron_schedule(schedule)
+            is_random_schedule = False
 
         # Validate prefix if provided
         if prefix is not None:
@@ -336,7 +342,12 @@ def private_mirror_command(
         if no_sync:
             typer.echo("   - Manual sync is required (automatic sync disabled)")
         else:
-            typer.echo("   - The mirror will sync daily at 00:00 UTC")
+            if is_random_schedule:
+                typer.echo(
+                    f"   - 🎲 Random sync schedule: {schedule} ({describe_schedule(schedule)})"
+                )
+            else:
+                typer.echo(f"   - Sync schedule: {schedule} ({describe_schedule(schedule)})")
             typer.echo("   - To sync manually: Go to Actions → Mirror Sync → Run workflow")
 
         typer.echo(f"   - Clone your mirror: git clone {mirror_url}")
